@@ -67,24 +67,36 @@
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="*"/>
                     </Grid.RowDefinitions>
-                    <TextBlock Grid.Row="0" Text="Category set" FontWeight="SemiBold" FontSize="12" Margin="0,0,0,2"/>
-                    <ComboBox Grid.Row="1" x:Name="CategoryProfileSelector"
-                              MinWidth="150"
-                              Height="{StaticResource RowControlHeight}"
-                              VerticalAlignment="Bottom"
-                              SelectionChanged="CategoryProfileSelector_SelectionChanged"/>
+                    <TextBlock Grid.Row="0" Text="Category sets" FontWeight="SemiBold" FontSize="12" Margin="0,0,0,2"/>
+                    <wt:MultiSelectComboBox Grid.Row="1" x:Name="CategoryProfileSelectionControl"
+                                            MinWidth="150"
+                                            Height="{StaticResource RowControlHeight}"
+                                            VerticalAlignment="Bottom"
+                                            SelectionChanged="CategoryProfileSelectionControl_SelectionChanged">
+                        <wt:MultiSelectComboBox.ItemTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding}" Padding="2,3"/>
+                            </DataTemplate>
+                        </wt:MultiSelectComboBox.ItemTemplate>
+                    </wt:MultiSelectComboBox>
                 </Grid>
                 <Grid>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="*"/>
                     </Grid.RowDefinitions>
-                    <TextBlock Grid.Row="0" Text="Word list" FontWeight="SemiBold" FontSize="12" Margin="0,0,0,2"/>
-                    <ComboBox Grid.Row="1" x:Name="WordListSelector"
-                              MinWidth="150"
-                              Height="{StaticResource RowControlHeight}"
-                              VerticalAlignment="Bottom"
-                              SelectionChanged="WordListSelector_SelectionChanged"/>
+                    <TextBlock Grid.Row="0" Text="Word lists" FontWeight="SemiBold" FontSize="12" Margin="0,0,0,2"/>
+                    <wt:MultiSelectComboBox Grid.Row="1" x:Name="WordListSelectionControl"
+                                            MinWidth="150"
+                                            Height="{StaticResource RowControlHeight}"
+                                            VerticalAlignment="Bottom"
+                                            SelectionChanged="WordListSelectionControl_SelectionChanged">
+                        <wt:MultiSelectComboBox.ItemTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding}" Padding="2,3"/>
+                            </DataTemplate>
+                        </wt:MultiSelectComboBox.ItemTemplate>
+                    </wt:MultiSelectComboBox>
                 </Grid>
                 <Grid>
                     <Grid.RowDefinitions>
@@ -92,15 +104,19 @@
                         <RowDefinition Height="*"/>
                     </Grid.RowDefinitions>
                     <TextBlock Grid.Row="0" Text="Words" FontWeight="SemiBold" FontSize="12" Margin="0,0,0,2"
-                               ToolTipService.ToolTip="How many random words to add to the prompt (0 = none)"/>
-                    <NumberBox Grid.Row="1" x:Name="RandomWordCountNumberBox"
-                               Minimum="0" Maximum="50" SmallChange="1" LargeChange="5"
-                               Width="96"
-                               Height="{StaticResource RowControlHeight}"
-                               VerticalAlignment="Bottom"
-                               SpinButtonPlacementMode="Inline"
-                               ValueChanged="RandomWordCountNumberBox_ValueChanged"
-                               ToolTipService.ToolTip="How many random words to add to the prompt (0 = none)"/>
+                               ToolTipService.ToolTip="How many random words to add to the prompt (0 = none); check several to pick one at random per generation"/>
+                    <wt:MultiSelectComboBox Grid.Row="1" x:Name="WordCountSelectionControl"
+                                            MinWidth="96"
+                                            Height="{StaticResource RowControlHeight}"
+                                            VerticalAlignment="Bottom"
+                                            SelectionChanged="WordCountSelectionControl_SelectionChanged"
+                                            ToolTipService.ToolTip="How many random words to add to the prompt (0 = none); check several to pick one at random per generation">
+                        <wt:MultiSelectComboBox.ItemTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding}" Padding="2,3"/>
+                            </DataTemplate>
+                        </wt:MultiSelectComboBox.ItemTemplate>
+                    </wt:MultiSelectComboBox>
                 </Grid>
                 <Button x:Name="RandomPromptButton"
                         Content="Generate Prompt"

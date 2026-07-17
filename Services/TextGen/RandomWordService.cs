@@ -132,13 +132,13 @@ namespace WallTrek.Services.TextGen
 
         /// <summary>
         /// Returns up to <paramref name="count"/> distinct words chosen at random from the
-        /// active word list.
+        /// named word list (or the active list when <paramref name="listName"/> is null).
         /// </summary>
-        public Task<List<string>> GetRandomWordsAsync(int count, CancellationToken cancellationToken = default)
+        public Task<List<string>> GetRandomWordsAsync(int count, CancellationToken cancellationToken = default, string? listName = null)
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            var words = GetActiveWords();
+            var words = GetWords(listName);
             if (count <= 0 || words.Count == 0)
                 return Task.FromResult(new List<string>());
 
@@ -162,12 +162,15 @@ namespace WallTrek.Services.TextGen
         }
 
         /// <summary>
-        /// Parsed words from the active list (<see cref="Settings.SelectedWordList"/>),
-        /// falling back to the first available list, then the embedded default.
+        /// Parsed words from the named list, falling back to the active list
+        /// (<see cref="Settings.SelectedWordList"/>), then the first available list, then
+        /// the embedded default.
         /// </summary>
-        public static List<string> GetActiveWords()
+        public static List<string> GetWords(string? name)
         {
-            var name = Settings.Instance.SelectedWordList;
+            if (string.IsNullOrWhiteSpace(name) || !Exists(name))
+                name = Settings.Instance.SelectedWordList;
+
             string text;
             if (!string.IsNullOrWhiteSpace(name) && Exists(name))
             {

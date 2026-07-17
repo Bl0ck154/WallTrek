@@ -102,6 +102,18 @@ namespace WallTrek.Services.Profiles
         }
 
         /// <summary>
+        /// Categories for the named profile, falling back to the active profile
+        /// (<see cref="LoadActive"/>) when the name is null or no longer on disk.
+        /// </summary>
+        public static Dictionary<string, string[]> Load(string? name)
+        {
+            if (!string.IsNullOrWhiteSpace(name) && Exists(name))
+                return LoadDictionary(name);
+
+            return LoadActive();
+        }
+
+        /// <summary>
         /// Categories for the active profile (<see cref="Settings.SelectedCategoryProfile"/>),
         /// falling back to the first available profile, then the built-in defaults.
         /// </summary>

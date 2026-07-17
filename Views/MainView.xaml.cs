@@ -79,14 +79,8 @@ namespace WallTrek.Views
             UpscalerSelectionComboBox.SelectedItem =
                 UpscalerCatalog.FindById(settings.SelectedUpscaler) ?? UpscalerCatalog.Default;
 
-            // Populate the random-prompt profile + word-list quick-switch dropdowns.
+            // Populate the random-prompt profile, word-list, and word-count multi-select dropdowns.
             PopulateProfileSelectors();
-
-            // Random word count (0 = off) is a per-run control on the main page. Suppress the
-            // ValueChanged save while restoring the persisted value.
-            _suppressProfileEvents = true;
-            RandomWordCountNumberBox.Value = settings.RandomWordCount;
-            _suppressProfileEvents = false;
 
             UpdateCostEstimate();
         }
@@ -542,57 +536,100 @@ namespace WallTrek.Views
             UpdateCostEstimate();
         }
 
-        // Populates the category-profile and word-list quick-switch dropdowns from the files
-        // on disk and selects the active one saved in settings.
+        // Choices offered in the Words multi-select dropdown (0 = no random words).
+        private static readonly int[] WordCountOptions = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15, 20, 30, 50 };
+
+        // Populates the category-set, word-list, and word-count multi-select dropdowns from
+        // the files on disk and restores the checked sets saved in settings. Each generation
+        // randomly picks one entry from each checked set.
         private void PopulateProfileSelectors()
         {
             _suppressProfileEvents = true;
 
             var profiles = CategoryProfileService.ListProfiles().ToList();
-            CategoryProfileSelector.ItemsSource = profiles;
-            CategoryProfileSelector.SelectedItem =
-                profiles.FirstOrDefault(p => string.Equals(p, Settings.Instance.SelectedCategoryProfile, StringComparison.OrdinalIgnoreCase))
-                ?? profiles.FirstOrDefault();
+            CategoryProfileSelectionControl.ItemsSource = profiles;
+            CategoryProfileSelectionControl.SetSelectedItems(
+                ResolveNameSelection(profiles, Settings.Instance.SelectedCategoryProfiles, Settings.Instance.SelectedCategoryProfile));
 
             var lists = RandomWordService.ListWordLists().ToList();
-            WordListSelector.ItemsSource = lists;
-            WordListSelector.SelectedItem =
-                lists.FirstOrDefault(l => string.Equals(l, Settings.Instance.SelectedWordList, StringComparison.OrdinalIgnoreCase))
-                ?? lists.FirstOrDefault();
+            WordListSelectionControl.ItemsSource = lists;
+            WordListSelectionControl.SetSelectedItems(
+                ResolveNameSelection(lists, Settings.Instance.SelectedWordLists, Settings.Instance.SelectedWordList));
+
+            var savedCounts = Settings.Instance.RandomWordCounts.Count > 0
+                ? Settings.Instance.RandomWordCounts
+                : new List<int> { Settings.Instance.RandomWordCount };
+            var countSelection = WordCountOptions.Where(savedCounts.Contains).Cast<object>().ToList();
+            if (countSelection.Count == 0)
+            {
+                countSelection.Add(WordCountOptions[0]); // saved count not in the list — default to 0 (off)
+            }
+            WordCountSelectionControl.ItemsSource = WordCountOptions;
+            WordCountSelectionControl.SetSelectedItems(countSelection);
 
             _suppressProfileEvents = false;
+        }
+
+        // Maps the saved multi-selection onto the names currently on disk, falling back to
+        // the legacy single setting and finally the first entry so the pool is never empty.
+        private static List<object> ResolveNameSelection(List<string> available, List<string> saved, string legacySingle)
+        {
+            var selected = available
+                .Where(n => saved.Contains(n, StringComparer.OrdinalIgnoreCase))
+                .Cast<object>()
+                .ToList();
+
+            if (selected.Count == 0)
+            {
+                var fallback = available.FirstOrDefault(n => string.Equals(n, legacySingle, StringComparison.OrdinalIgnoreCase))
+                    ?? available.FirstOrDefault();
+                if (fallback != null)
+                {
+                    selected.Add(fallback);
+                }
+            }
+
+            return selected;
         }
 
         // Re-reads the lists/selection (e.g., after returning from Settings, where profiles
         // and word lists may have been added, renamed, deleted, or re-selected).
         public void RefreshProfileSelectors() => PopulateProfileSelectors();
 
-        private void CategoryProfileSelector_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        private void CategoryProfileSelectionControl_SelectionChanged(object? sender, EventArgs e)
         {
             if (_suppressProfileEvents) return;
-            if (CategoryProfileSelector.SelectedItem is string name)
+            var names = CategoryProfileSelectionControl.SelectedItems.Cast<string>().ToList();
+            Settings.Instance.SelectedCategoryProfiles = names;
+            // Keep the legacy single setting valid (used by the Settings editor and fallback paths).
+            if (names.Count > 0 && !names.Contains(Settings.Instance.SelectedCategoryProfile, StringComparer.OrdinalIgnoreCase))
             {
-                Settings.Instance.SelectedCategoryProfile = name;
-                Settings.Instance.Save();
+                Settings.Instance.SelectedCategoryProfile = names[0];
             }
+            Settings.Instance.Save();
         }
 
-        private void WordListSelector_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        private void WordListSelectionControl_SelectionChanged(object? sender, EventArgs e)
         {
             if (_suppressProfileEvents) return;
-            if (WordListSelector.SelectedItem is string name)
+            var names = WordListSelectionControl.SelectedItems.Cast<string>().ToList();
+            Settings.Instance.SelectedWordLists = names;
+            if (names.Count > 0 && !names.Contains(Settings.Instance.SelectedWordList, StringComparer.OrdinalIgnoreCase))
             {
-                Settings.Instance.SelectedWordList = name;
-                Settings.Instance.Save();
+                Settings.Instance.SelectedWordList = names[0];
             }
+            Settings.Instance.Save();
         }
 
-        private void RandomWordCountNumberBox_ValueChanged(NumberBox sender, NumberBoxValueChangedEventArgs args)
+        private void WordCountSelectionControl_SelectionChanged(object? sender, EventArgs e)
         {
             if (_suppressProfileEvents) return;
-            // NumberBox yields NaN when the field is cleared; treat that as 0 (off).
-            var count = double.IsNaN(sender.Value) ? 0 : (int)sender.Value;
-            Settings.Instance.RandomWordCount = count;
+            var counts = WordCountSelectionControl.SelectedItems.Cast<int>().ToList();
+            Settings.Instance.RandomWordCounts = counts;
+            if (counts.Count > 0 && !counts.Contains(Settings.Instance.RandomWordCount))
+            {
+                Settings.Instance.RandomWordCount = counts[0];
+            }
             Settings.Instance.Save();
         }
 

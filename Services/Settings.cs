@@ -70,6 +70,9 @@ namespace WallTrek.Services
         public List<string> SelectedImageModels { get; set; } = new();
         public string SelectedCategoryProfile { get; set; } = "Default";
         public string SelectedWordList { get; set; } = "Default";
+        public List<string> SelectedCategoryProfiles { get; set; } = new();
+        public List<string> SelectedWordLists { get; set; } = new();
+        public List<int> RandomWordCounts { get; set; } = new();
         public string SelectedUpscaler { get; set; } = "fast";
         public string? GoogleApiKey { get; set; }
         public string? StabilityApiKey { get; set; }
@@ -225,6 +228,26 @@ namespace WallTrek.Services
         {
             get => _model.SelectedWordList;
             set => _model.SelectedWordList = value;
+        }
+
+        // Checked sets from the main page's multi-select dropdowns. Each generation randomly
+        // picks one entry from each; the legacy single settings above remain as fallbacks.
+        public List<string> SelectedCategoryProfiles
+        {
+            get => _model.SelectedCategoryProfiles;
+            set => _model.SelectedCategoryProfiles = value;
+        }
+
+        public List<string> SelectedWordLists
+        {
+            get => _model.SelectedWordLists;
+            set => _model.SelectedWordLists = value;
+        }
+
+        public List<int> RandomWordCounts
+        {
+            get => _model.RandomWordCounts;
+            set => _model.RandomWordCounts = value;
         }
 
         public string SelectedUpscaler

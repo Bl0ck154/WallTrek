@@ -11,8 +11,11 @@ namespace WallTrek.Services.TextGen
     public async Task<PromptGenerationResult?> GenerateRandomPromptAsync(CancellationToken cancellationToken = default, string? llmModelOverride = null)
     {
       var settings = Settings.Instance;
-      // Categories come from the active profile file in the categories folder.
-      var randomPrompts = CategoryProfileService.LoadActive();
+      var random = new Random();
+
+      // Each generation randomly picks one of the checked category sets / word lists /
+      // word counts from the main page (falling back to the legacy single settings).
+      var randomPrompts = CategoryProfileService.Load(PickRandom(settings.SelectedCategoryProfiles, random));
 
       // Create LLM service based on the selected model (or the per-generation random pick).
       var modelId = string.IsNullOrEmpty(llmModelOverride) ? settings.SelectedLlmModel : llmModelOverride;
@@ -23,15 +26,17 @@ namespace WallTrek.Services.TextGen
           settings.GoogleApiKey ?? string.Empty
       );
 
-      // Randomize the prompt generation approach
-      var random = new Random();
       var selectedProperties = new List<string>();
 
-      // Add random seed words when the user has set a count above zero (0 = off).
-      if (settings.RandomWordCount > 0)
+      // Add random seed words when this run's count is above zero (0 = off).
+      var wordCount = settings.RandomWordCounts.Count > 0
+          ? settings.RandomWordCounts[random.Next(settings.RandomWordCounts.Count)]
+          : settings.RandomWordCount;
+
+      if (wordCount > 0)
       {
         var randomWordService = new RandomWordService();
-        var randomWords = await randomWordService.GetRandomWordsAsync(settings.RandomWordCount, cancellationToken);
+        var randomWords = await randomWordService.GetRandomWordsAsync(wordCount, cancellationToken, PickRandom(settings.SelectedWordLists, random));
         selectedProperties.AddRange(randomWords);
       }
 
@@ -88,5 +93,8 @@ namespace WallTrek.Services.TextGen
 
       return result;
     }
+
+    private static string? PickRandom(List<string> items, Random random) =>
+        items.Count > 0 ? items[random.Next(items.Count)] : null;
   }
 }
