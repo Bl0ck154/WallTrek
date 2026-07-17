@@ -74,6 +74,14 @@
                                                         <FontIcon Glyph="&#xE91B;"/>
                                                     </MenuFlyoutItem.Icon>
                                                 </MenuFlyoutItem>
+                                                <MenuFlyoutItem x:Name="GenerateVideoItem"
+                                                              Text="Generate Video..."
+                                                              Click="GenerateVideo_Click"
+                                                              Tag="{x:Bind}">
+                                                    <MenuFlyoutItem.Icon>
+                                                        <FontIcon Glyph="&#xE714;"/>
+                                                    </MenuFlyoutItem.Icon>
+                                                </MenuFlyoutItem>
                                                 <MenuFlyoutSeparator/>
                                                 <MenuFlyoutItem x:Name="UploadToDeviantArtItem"
                                                               Text="Upload to DeviantArt"
@@ -121,6 +129,21 @@
                                                HorizontalAlignment="Center"
                                                VerticalAlignment="Center"/>
                                     </Button>
+
+                                    <!-- Video indicator (center play glyph) -->
+                                    <Border Background="#80000000"
+                                            CornerRadius="20"
+                                            Width="40" Height="40"
+                                            HorizontalAlignment="Center"
+                                            VerticalAlignment="Center"
+                                            IsHitTestVisible="False"
+                                            Visibility="{x:Bind IsVideo, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                        <FontIcon Glyph="&#xE768;"
+                                                FontSize="16"
+                                                Foreground="White"
+                                                HorizontalAlignment="Center"
+                                                VerticalAlignment="Center"/>
+                                    </Border>
 
                                     <!-- Favorite indicator (top-left) -->
                                     <Border Background="#80000000"
@@ -190,12 +213,17 @@
             </StackPanel>
         </ScrollViewer>
 
-        <!-- Full screen image popup -->
+        <!-- Full screen image/video popup -->
         <Border x:Name="FullScreenOverlay" Grid.RowSpan="2" Background="Black" Opacity="0.9"
                 Visibility="Collapsed" Tapped="FullScreenOverlay_Tapped" KeyDown="FullScreenOverlay_KeyDown"
                 IsTabStop="True" AllowFocusOnInteraction="True">
-            <Image x:Name="FullScreenImage" Stretch="Uniform" HorizontalAlignment="Center"
-                   VerticalAlignment="Center" Tapped="FullScreenImage_Tapped"/>
+            <Grid>
+                <Image x:Name="FullScreenImage" Stretch="Uniform" HorizontalAlignment="Center"
+                       VerticalAlignment="Center" Tapped="FullScreenImage_Tapped"/>
+                <MediaPlayerElement x:Name="FullScreenVideo" Stretch="Uniform" HorizontalAlignment="Center"
+                                    VerticalAlignment="Center" AreTransportControlsEnabled="False"
+                                    AutoPlay="True" Visibility="Collapsed" Tapped="FullScreenImage_Tapped"/>
+            </Grid>
         </Border>
     </Grid>
 </UserControl>

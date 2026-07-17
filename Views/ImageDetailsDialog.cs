@@ -40,6 +40,8 @@ namespace WallTrek.Views
                 OnPropertyChanged(nameof(GeneratedDateText));
                 OnPropertyChanged(nameof(LlmModelText));
                 OnPropertyChanged(nameof(ImgModelText));
+                OnPropertyChanged(nameof(VideoModelText));
+                OnPropertyChanged(nameof(ShowVideoModel));
                 OnPropertyChanged(nameof(FavoriteText));
                 OnPropertyChanged(nameof(UploadStatusText));
                 OnPropertyChanged(nameof(ShowDeviantArtUrl));
@@ -84,6 +86,8 @@ namespace WallTrek.Views
         public string GeneratedDateText => $"Generated: {_viewModel?.GeneratedDate:yyyy-MM-dd HH:mm:ss}";
         public string LlmModelText => $"LLM Model: {(string.IsNullOrEmpty(_viewModel?.LlmModel) ? "N/A" : _viewModel.LlmModel)}";
         public string ImgModelText => $"Image Model: {(string.IsNullOrEmpty(_viewModel?.ImgModel) ? "N/A" : _viewModel.ImgModel)}";
+        public string VideoModelText => $"Video Model: {(string.IsNullOrEmpty(_viewModel?.VideoModel) ? "N/A" : _viewModel.VideoModel)}";
+        public Visibility ShowVideoModel => _viewModel?.IsVideo == true ? Visibility.Visible : Visibility.Collapsed;
         public string FavoriteText => $"Favorite: {(_viewModel?.IsFavorite == true ? "Yes" : "No")}";
         public string UploadStatusText => $"Uploaded to DeviantArt: {(_viewModel?.IsUploaded == true ? "Yes" : "No")}";
 

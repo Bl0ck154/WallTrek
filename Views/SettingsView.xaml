@@ -96,6 +96,11 @@
                         </StackPanel>
 
                         <StackPanel Spacing="10">
+                            <TextBlock Text="fal.ai API Key:" FontWeight="SemiBold"/>
+                            <TextBox x:Name="FalApiKeyTextBox" PlaceholderText="Enter your fal.ai API key (used for video generation)" Width="400" HorizontalAlignment="Left"/>
+                        </StackPanel>
+
+                        <StackPanel Spacing="10">
                             <TextBlock Text="DeviantArt API Settings:" FontWeight="SemiBold"/>
                             <StackPanel Spacing="8">
                                 <TextBlock Text="Client ID:" FontSize="14"/>

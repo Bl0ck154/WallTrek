@@ -40,7 +40,7 @@ namespace WallTrek.Services.DeviantArt
             return client;
         }
 
-        public async Task<DeviantArtUploadResult> UploadImageAsync(string imagePath, string title, string description, string[] tags, string? llmModel = null, string? imgModel = null)
+        public async Task<DeviantArtUploadResult> UploadImageAsync(string imagePath, string title, string description, string[] tags, string? llmModel = null, string? imgModel = null, string? videoModel = null)
         {
             try
             {
@@ -75,7 +75,7 @@ namespace WallTrek.Services.DeviantArt
                 }
 
                 // Upload the image
-                return await UploadToDeviantArtAsync(imagePath, title, description, tags, llmModel, imgModel);
+                return await UploadToDeviantArtAsync(imagePath, title, description, tags, llmModel, imgModel, videoModel);
             }
             catch (Exception ex)
             {
@@ -307,7 +307,7 @@ namespace WallTrek.Services.DeviantArt
             return await CreateGalleryFolderAsync(name);
         }
 
-        private async Task<DeviantArtUploadResult> UploadToDeviantArtAsync(string imagePath, string title, string description, string[] tags, string? llmModel = null, string? imgModel = null)
+        private async Task<DeviantArtUploadResult> UploadToDeviantArtAsync(string imagePath, string title, string description, string[] tags, string? llmModel = null, string? imgModel = null, string? videoModel = null)
         {
             try
             {
@@ -344,6 +344,10 @@ namespace WallTrek.Services.DeviantArt
                 if (!string.IsNullOrEmpty(imgModel))
                 {
                     allTags.Add(imgModel);
+                }
+                if (!string.IsNullOrEmpty(videoModel))
+                {
+                    allTags.Add(videoModel);
                 }
 
                 // Sanitize tags and add them
@@ -502,6 +506,7 @@ namespace WallTrek.Services.DeviantArt
                 ".gif" => "image/gif",
                 ".bmp" => "image/bmp",
                 ".webp" => "image/webp",
+                ".mp4" => "video/mp4",
                 _ => "application/octet-stream"
             };
         }

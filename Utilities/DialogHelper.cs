@@ -1,13 +1,17 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using System;
 using System.Threading.Tasks;
+using WallTrek.Services;
 
 namespace WallTrek.Utilities
 {
     public static class DialogHelper
     {
         /// <summary>
-        /// Shows a simple message dialog with an OK button
+        /// Shows a simple message dialog with an OK button. Never throws: WinUI allows only one
+        /// ContentDialog at a time, and an informational message failing to display must not
+        /// abort the operation that's reporting it (the message is logged instead).
         /// </summary>
         public static async Task ShowMessageAsync(XamlRoot xamlRoot, string title, string content)
         {
@@ -19,7 +23,14 @@ namespace WallTrek.Utilities
                 XamlRoot = xamlRoot
             };
 
-            await dialog.ShowAsync();
+            try
+            {
+                await dialog.ShowAsync();
+            }
+            catch (Exception ex)
+            {
+                Logger.Error($"Could not show dialog \"{title}\" — {content}", ex);
+            }
         }
 
         /// <summary>

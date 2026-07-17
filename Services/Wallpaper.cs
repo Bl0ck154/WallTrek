@@ -22,6 +22,21 @@ namespace WallTrek.Services
 
         public static void Set(string wpaper)
         {
+            // When Lively is running its wallpaper layer covers the static desktop, so the Win32
+            // call below would succeed invisibly; route through Lively instead.
+            if (LivelyService.IsRunning)
+            {
+                try
+                {
+                    LivelyService.SetWallpaper(wpaper);
+                    return;
+                }
+                catch (Exception ex)
+                {
+                    Logger.Error("Failed to set wallpaper via Lively, falling back to Win32", ex);
+                }
+            }
+
             RegistryKey? key = Registry.CurrentUser.OpenSubKey(@"Control Panel\Desktop", true);
 
             if (key == null)

@@ -60,6 +60,9 @@ namespace WallTrek.Services
 
             bool hasTitleColumn = false;
             bool hasTagsColumn = false;
+            bool hasMediaTypeColumn = false;
+            bool hasSourceImagePathColumn = false;
+            bool hasVideoModelColumn = false;
 
             using (var reader = checkTitleColumnCommand.ExecuteReader())
             {
@@ -68,6 +71,9 @@ namespace WallTrek.Services
                     var columnName = reader.GetString(1); // Column name is at index 1
                     if (columnName == "Title") hasTitleColumn = true;
                     if (columnName == "Tags") hasTagsColumn = true;
+                    if (columnName == "MediaType") hasMediaTypeColumn = true;
+                    if (columnName == "SourceImagePath") hasSourceImagePathColumn = true;
+                    if (columnName == "VideoModel") hasVideoModelColumn = true;
                 }
             }
 
@@ -83,6 +89,31 @@ namespace WallTrek.Services
                 var addTagsCommand = connection.CreateCommand();
                 addTagsCommand.CommandText = "ALTER TABLE GeneratedImages ADD COLUMN Tags TEXT NULL;";
                 addTagsCommand.ExecuteNonQuery();
+            }
+
+            // Migration 2: videos live in the same table as images, distinguished by MediaType,
+            // with a link back to the image they were generated from.
+            if (!hasMediaTypeColumn)
+            {
+                var addMediaTypeCommand = connection.CreateCommand();
+                addMediaTypeCommand.CommandText = "ALTER TABLE GeneratedImages ADD COLUMN MediaType TEXT NOT NULL DEFAULT 'image';";
+                addMediaTypeCommand.ExecuteNonQuery();
+            }
+
+            if (!hasSourceImagePathColumn)
+            {
+                var addSourceImagePathCommand = connection.CreateCommand();
+                addSourceImagePathCommand.CommandText = "ALTER TABLE GeneratedImages ADD COLUMN SourceImagePath TEXT NULL;";
+                addSourceImagePathCommand.ExecuteNonQuery();
+            }
+
+            // Migration 3: videos keep LlmModel/ImgModel from their source image and record the
+            // video generation model separately.
+            if (!hasVideoModelColumn)
+            {
+                var addVideoModelCommand = connection.CreateCommand();
+                addVideoModelCommand.CommandText = "ALTER TABLE GeneratedImages ADD COLUMN VideoModel TEXT NULL;";
+                addVideoModelCommand.ExecuteNonQuery();
             }
         }
 
@@ -103,6 +134,26 @@ namespace WallTrek.Services
             insertCommand.Parameters.AddWithValue("@isFavorite", isFavorite ? 1 : 0);
             insertCommand.Parameters.AddWithValue("@title", title);
             insertCommand.Parameters.AddWithValue("@tags", tags);
+
+            await insertCommand.ExecuteNonQueryAsync();
+        }
+
+        public async Task AddGeneratedVideoAsync(string videoPath, string llmModel, string imgModel, string videoModel, string promptText, string sourceImagePath)
+        {
+            using var connection = new SqliteConnection(connectionString);
+            await connection.OpenAsync();
+
+            var insertCommand = connection.CreateCommand();
+            insertCommand.CommandText = @"
+                INSERT INTO GeneratedImages (ImagePath, GeneratedDate, LlmModel, ImgModel, VideoModel, PromptText, MediaType, SourceImagePath)
+                VALUES (@videoPath, @generatedDate, @llmModel, @imgModel, @videoModel, @promptText, 'video', @sourceImagePath)";
+            insertCommand.Parameters.AddWithValue("@videoPath", videoPath);
+            insertCommand.Parameters.AddWithValue("@generatedDate", DateTime.Now);
+            insertCommand.Parameters.AddWithValue("@llmModel", llmModel);
+            insertCommand.Parameters.AddWithValue("@imgModel", imgModel);
+            insertCommand.Parameters.AddWithValue("@videoModel", videoModel);
+            insertCommand.Parameters.AddWithValue("@promptText", promptText);
+            insertCommand.Parameters.AddWithValue("@sourceImagePath", sourceImagePath);
 
             await insertCommand.ExecuteNonQueryAsync();
         }
@@ -156,7 +207,7 @@ namespace WallTrek.Services
             var command = connection.CreateCommand();
 
             command.CommandText = $@"
-                SELECT gi.ImagePath, gi.GeneratedDate, gi.PromptText, gi.IsFavorite, gi.IsUploadedToDeviantArt, gi.DeviantArtUrl, gi.LlmModel, gi.ImgModel, gi.Title, gi.Tags
+                SELECT gi.ImagePath, gi.GeneratedDate, gi.PromptText, gi.IsFavorite, gi.IsUploadedToDeviantArt, gi.DeviantArtUrl, gi.LlmModel, gi.ImgModel, gi.Title, gi.Tags, gi.MediaType, gi.SourceImagePath, gi.VideoModel
                 FROM GeneratedImages gi
                 ORDER BY gi.GeneratedDate DESC
                 LIMIT @limit OFFSET @offset";
@@ -180,7 +231,10 @@ namespace WallTrek.Services
                     LlmModel = reader.IsDBNull(6) ? string.Empty : reader.GetString(6),
                     ImgModel = reader.IsDBNull(7) ? string.Empty : reader.GetString(7),
                     Title = reader.IsDBNull(8) ? string.Empty : reader.GetString(8),
-                    Tags = reader.IsDBNull(9) ? string.Empty : reader.GetString(9)
+                    Tags = reader.IsDBNull(9) ? string.Empty : reader.GetString(9),
+                    MediaType = reader.IsDBNull(10) ? "image" : reader.GetString(10),
+                    SourceImagePath = reader.IsDBNull(11) ? string.Empty : reader.GetString(11),
+                    VideoModel = reader.IsDBNull(12) ? string.Empty : reader.GetString(12)
                 });
             }
 
@@ -221,6 +275,7 @@ namespace WallTrek.Services
         public string? DeviantArtUrl { get; set; }
         public string LlmModel { get; set; } = string.Empty;
         public string ImgModel { get; set; } = string.Empty;
+        public string VideoModel { get; set; } = string.Empty;
 
         private bool _isUploading = false;
         public bool IsUploading
@@ -256,5 +311,8 @@ namespace WallTrek.Services
         public string ImgModel { get; set; } = string.Empty;
         public string Title { get; set; } = string.Empty;
         public string Tags { get; set; } = string.Empty;
+        public string MediaType { get; set; } = "image";
+        public string SourceImagePath { get; set; } = string.Empty;
+        public string VideoModel { get; set; } = string.Empty;
     }
 }

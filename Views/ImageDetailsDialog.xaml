@@ -74,6 +74,10 @@
             <!-- Image Model -->
             <TextBlock Text="{x:Bind ImgModelText, Mode=OneWay}" />
 
+            <!-- Video Model (videos only) -->
+            <TextBlock Text="{x:Bind VideoModelText, Mode=OneWay}"
+                       Visibility="{x:Bind ShowVideoModel, Mode=OneWay}" />
+
             <!-- Favorite Status -->
             <TextBlock Text="{x:Bind FavoriteText, Mode=OneWay}" />
 

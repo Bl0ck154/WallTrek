@@ -60,6 +60,9 @@ namespace WallTrek.Views
                     var viewModel = new ImageGridItemViewModel
                     {
                         ImagePath = image.ImagePath,
+                        MediaType = image.MediaType,
+                        SourceImagePath = image.SourceImagePath,
+                        VideoModel = image.VideoModel,
                         PromptText = image.PromptText,
                         GeneratedDate = image.GeneratedDate,
                         IsFavorite = image.IsFavorite,
@@ -157,11 +160,27 @@ namespace WallTrek.Views
 
         private async Task LoadThumbnailAsync(ImageGridItemViewModel viewModel)
         {
+            // Videos show their source image (the loop's first frame); if that image is gone,
+            // let the shell extract a frame from the video file itself.
+            var thumbnailPath = viewModel.ImagePath;
+            var thumbnailMode = ThumbnailMode.PicturesView;
+            if (viewModel.IsVideo)
+            {
+                if (File.Exists(viewModel.SourceImagePath))
+                {
+                    thumbnailPath = viewModel.SourceImagePath;
+                }
+                else
+                {
+                    thumbnailMode = ThumbnailMode.VideosView;
+                }
+            }
+
             // Try StorageFile thumbnail (works when packaged)
             try
             {
-                var file = await StorageFile.GetFileFromPathAsync(viewModel.ImagePath);
-                var thumbnail = await file.GetThumbnailAsync(ThumbnailMode.PicturesView, 200);
+                var file = await StorageFile.GetFileFromPathAsync(thumbnailPath);
+                var thumbnail = await file.GetThumbnailAsync(thumbnailMode, 200);
 
                 if (thumbnail != null)
                 {
@@ -173,14 +192,19 @@ namespace WallTrek.Views
             }
             catch { }
 
-            // Fallback: disk-cached thumbnail
+            // Fallback: disk-cached thumbnail (System.Drawing can only decode images)
+            if (thumbnailMode == ThumbnailMode.VideosView)
+            {
+                return;
+            }
+
             try
             {
-                var cachePath = GetThumbnailCachePath(viewModel.ImagePath);
+                var cachePath = GetThumbnailCachePath(thumbnailPath);
 
                 if (!File.Exists(cachePath))
                 {
-                    await Task.Run(() => GenerateThumbnail(viewModel.ImagePath, cachePath));
+                    await Task.Run(() => GenerateThumbnail(thumbnailPath, cachePath));
                 }
 
                 var bitmapImage = new BitmapImage();
@@ -216,7 +240,14 @@ namespace WallTrek.Views
         {
             if (sender is Button button && button.Tag is ImageGridItemViewModel viewModel)
             {
-                ShowFullScreenImage(viewModel.ImagePath);
+                if (viewModel.IsVideo)
+                {
+                    ShowFullScreenVideo(viewModel.ImagePath);
+                }
+                else
+                {
+                    ShowFullScreenImage(viewModel.ImagePath);
+                }
             }
         }
 
@@ -233,6 +264,8 @@ namespace WallTrek.Views
                 {
                     var bitmap = new BitmapImage(new Uri(imagePath));
                     FullScreenImage.Source = bitmap;
+                    FullScreenImage.Visibility = Visibility.Visible;
+                    FullScreenVideo.Visibility = Visibility.Collapsed;
                     FullScreenOverlay.Visibility = Visibility.Visible;
                     FullScreenOverlay.Focus(FocusState.Programmatic);
                 }
@@ -243,10 +276,39 @@ namespace WallTrek.Views
             }
         }
 
+        private Windows.Media.Core.MediaSource? fullScreenVideoSource;
+
+        private void ShowFullScreenVideo(string videoPath)
+        {
+            try
+            {
+                if (File.Exists(videoPath))
+                {
+                    fullScreenVideoSource = Windows.Media.Core.MediaSource.CreateFromUri(new Uri(videoPath));
+                    FullScreenVideo.Source = fullScreenVideoSource;
+                    FullScreenVideo.MediaPlayer.IsLoopingEnabled = true;
+                    FullScreenImage.Visibility = Visibility.Collapsed;
+                    FullScreenVideo.Visibility = Visibility.Visible;
+                    FullScreenOverlay.Visibility = Visibility.Visible;
+                    FullScreenOverlay.Focus(FocusState.Programmatic);
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Error("Error showing fullscreen video", ex);
+            }
+        }
+
         private void HideFullScreenImage()
         {
             FullScreenOverlay.Visibility = Visibility.Collapsed;
             FullScreenImage.Source = null;
+
+            // Release the video file handle so the mp4 can be deleted or moved while the app runs.
+            FullScreenVideo.MediaPlayer?.Pause();
+            FullScreenVideo.Source = null;
+            fullScreenVideoSource?.Dispose();
+            fullScreenVideoSource = null;
         }
 
         private void FullScreenOverlay_KeyDown(object sender, KeyRoutedEventArgs e)
@@ -268,11 +330,44 @@ namespace WallTrek.Views
             HideFullScreenImage();
         }
 
-        private void SetAsBackground_Click(object sender, RoutedEventArgs e)
+        private async void SetAsBackground_Click(object sender, RoutedEventArgs e)
         {
             if (sender is MenuFlyoutItem menuItem && menuItem.Tag is ImageGridItemViewModel viewModel)
             {
-                SetAsBackground(viewModel.ImagePath);
+                if (viewModel.IsVideo)
+                {
+                    await SetVideoAsBackground(viewModel.ImagePath);
+                }
+                else
+                {
+                    SetAsBackground(viewModel.ImagePath);
+                }
+            }
+        }
+
+        private async Task SetVideoAsBackground(string videoPath)
+        {
+            // Video wallpapers only work through Lively; there is no native Windows fallback.
+            if (!LivelyService.IsInstalled)
+            {
+                var dialog = new ContentDialog
+                {
+                    Title = "Lively Wallpaper required",
+                    Content = "Video wallpapers require Lively Wallpaper. Install it from the Microsoft Store, then try again.",
+                    CloseButtonText = "OK",
+                    XamlRoot = this.XamlRoot
+                };
+                await dialog.ShowAsync();
+                return;
+            }
+
+            try
+            {
+                LivelyService.SetWallpaper(videoPath);
+            }
+            catch (Exception ex)
+            {
+                Logger.Error("Error setting video wallpaper via Lively", ex);
             }
         }
 
@@ -304,7 +399,8 @@ namespace WallTrek.Views
                         IsUploadedToDeviantArt = viewModel.IsUploaded,
                         DeviantArtUrl = viewModel.DeviantArtUrl,
                         LlmModel = viewModel.LlmModel,
-                        ImgModel = viewModel.ImgModel
+                        ImgModel = viewModel.ImgModel,
+                        VideoModel = viewModel.VideoModel
                     };
 
                     // Parse tags from comma-separated string to array
@@ -395,16 +491,21 @@ namespace WallTrek.Views
         {
             if (sender is MenuFlyout menuFlyout)
             {
-                // Find the toggle favorite menu item and update its text
                 foreach (var item in menuFlyout.Items)
                 {
-                    if (item is MenuFlyoutItem menuItem && menuItem.Name == "ToggleFavoriteItem")
+                    if (item is not MenuFlyoutItem menuItem || menuItem.Tag is not ImageGridItemViewModel viewModel)
                     {
-                        if (menuItem.Tag is ImageGridItemViewModel viewModel)
-                        {
+                        continue;
+                    }
+
+                    switch (menuItem.Name)
+                    {
+                        case "ToggleFavoriteItem":
                             menuItem.Text = viewModel.IsFavorite ? "Remove from Favorites" : "Add to Favorites";
-                        }
-                        break;
+                            break;
+                        case "GenerateVideoItem":
+                            menuItem.Visibility = viewModel.IsVideo ? Visibility.Collapsed : Visibility.Visible;
+                            break;
                     }
                 }
             }
@@ -432,6 +533,14 @@ namespace WallTrek.Views
             }
         }
 
+        private void GenerateVideo_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is MenuFlyoutItem menuItem && menuItem.Tag is ImageGridItemViewModel viewModel)
+            {
+                GenerateVideoDialog.Show(viewModel, this.XamlRoot, onVideoCreated: () => LoadImages());
+            }
+        }
+
         private void Details_Click(object sender, RoutedEventArgs e)
         {
             if (sender is MenuFlyoutItem menuItem && menuItem.Tag is ImageGridItemViewModel viewModel)
@@ -456,6 +565,10 @@ namespace WallTrek.Views
     public class ImageGridItemViewModel : System.ComponentModel.INotifyPropertyChanged
     {
         public string ImagePath { get; set; } = string.Empty;
+        public string MediaType { get; set; } = "image";
+        public string SourceImagePath { get; set; } = string.Empty;
+        public string VideoModel { get; set; } = string.Empty;
+        public bool IsVideo => MediaType == "video";
         public string PromptText { get; set; } = string.Empty;
         public DateTime GeneratedDate { get; set; }
         public string DeviantArtUrl { get; set; } = string.Empty;
