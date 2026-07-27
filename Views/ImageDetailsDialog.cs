@@ -197,15 +197,7 @@ namespace WallTrek.Views
         {
             try
             {
-                // Delete from database
-                var databaseService = new DatabaseService();
-                await databaseService.DeleteImageAsync(imagePath);
-
-                // Delete file from file system
-                if (File.Exists(imagePath))
-                {
-                    File.Delete(imagePath);
-                }
+                await ImageDeleteService.DeleteAsync(imagePath);
 
                 // Notify parent that image was deleted
                 onImageDeleted?.Invoke(imagePath);

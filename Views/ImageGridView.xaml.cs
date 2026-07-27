@@ -2,6 +2,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Data;
 using Microsoft.UI.Xaml.Input;
+using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
 using System;
 using System.Collections.Generic;
@@ -45,6 +46,11 @@ namespace WallTrek.Views
 
         public async void LoadImages()
         {
+            if (SelectModeButton.IsChecked == true)
+            {
+                SelectModeButton.IsChecked = false;
+            }
+
             _displayedImages.Clear();
             _allImages.Clear();
             _filteredImages.Clear();
@@ -67,6 +73,7 @@ namespace WallTrek.Views
                         GeneratedDate = image.GeneratedDate,
                         IsFavorite = image.IsFavorite,
                         IsUploaded = image.IsUploaded,
+                        IsArchived = image.IsArchived,
                         DeviantArtUrl = image.DeviantArtUrl,
                         LlmModel = image.LlmModel,
                         ImgModel = image.ImgModel,
@@ -85,12 +92,15 @@ namespace WallTrek.Views
         {
             var favoritesOnly = FavoritesOnlyCheckBox.IsChecked == true;
             var notUploadedOnly = NotUploadedOnlyCheckBox.IsChecked == true;
+            var showArchived = ShowArchivedCheckBox.IsChecked == true;
 
             _filteredImages = _allImages.Where(img =>
             {
                 if (favoritesOnly && !img.IsFavorite)
                     return false;
                 if (notUploadedOnly && img.IsUploaded)
+                    return false;
+                if (!showArchived && img.IsArchived)
                     return false;
                 return true;
             }).ToList();
@@ -236,24 +246,404 @@ namespace WallTrek.Views
             thumb.Save(cachePath, ImageFormat.Jpeg);
         }
 
-        private void ImageButton_Click(object sender, RoutedEventArgs e)
+        private void ImagesGrid_ItemClick(object sender, ItemClickEventArgs e)
         {
-            if (sender is Button button && button.Tag is ImageGridItemViewModel viewModel)
+            if (e.ClickedItem is ImageGridItemViewModel viewModel)
             {
-                if (viewModel.IsVideo)
-                {
-                    ShowFullScreenVideo(viewModel.ImagePath);
-                }
-                else
-                {
-                    ShowFullScreenImage(viewModel.ImagePath);
-                }
+                ShowFullScreenItem(viewModel);
             }
         }
 
-        private void ImageButton_RightTapped(object sender, Microsoft.UI.Xaml.Input.RightTappedRoutedEventArgs e)
+        private void SelectModeButton_Checked(object sender, RoutedEventArgs e)
         {
-            // This method is handled by the XAML ContextFlyout
+            SelectModeButton.Content = "Cancel";
+            ImagesGrid.IsItemClickEnabled = false;
+            ImagesGrid.SelectionMode = ListViewSelectionMode.Multiple;
+            FiltersPanel.Visibility = Visibility.Collapsed;
+            SelectionActionsPanel.Visibility = Visibility.Visible;
+            UpdateSelectionUI();
+        }
+
+        private void SelectModeButton_Unchecked(object sender, RoutedEventArgs e)
+        {
+            SelectModeButton.Content = "Select";
+            ImagesGrid.SelectionMode = ListViewSelectionMode.None;
+            ImagesGrid.IsItemClickEnabled = true;
+            SelectionActionsPanel.Visibility = Visibility.Collapsed;
+            FiltersPanel.Visibility = Visibility.Visible;
+        }
+
+        private void ImagesGrid_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            UpdateSelectionUI();
+        }
+
+        private void UpdateSelectionUI()
+        {
+            var count = ImagesGrid.SelectedItems.Count;
+            SelectionCountText.Text = $"{count} selected";
+            var hasSelection = count > 0;
+            FavoriteSelectedButton.IsEnabled = hasSelection;
+            UnfavoriteSelectedButton.IsEnabled = hasSelection;
+            ArchiveSelectedButton.IsEnabled = hasSelection;
+            UnarchiveSelectedButton.IsEnabled = hasSelection;
+            DeleteSelectedButton.IsEnabled = hasSelection;
+        }
+
+        private void ImagesGrid_KeyDown(object sender, KeyRoutedEventArgs e)
+        {
+            if (e.Key == VirtualKey.Escape && SelectModeButton.IsChecked == true)
+            {
+                SelectModeButton.IsChecked = false;
+                e.Handled = true;
+            }
+        }
+
+        private void SelectAllButton_Click(object sender, RoutedEventArgs e)
+        {
+            ImagesGrid.SelectAll();
+        }
+
+        private async void FavoriteSelected_Click(object sender, RoutedEventArgs e)
+        {
+            await SetFavoriteForSelectionAsync(true);
+        }
+
+        private async void UnfavoriteSelected_Click(object sender, RoutedEventArgs e)
+        {
+            await SetFavoriteForSelectionAsync(false);
+        }
+
+        private async Task SetFavoriteForSelectionAsync(bool isFavorite)
+        {
+            var selected = ImagesGrid.SelectedItems.OfType<ImageGridItemViewModel>().ToList();
+            if (selected.Count == 0)
+            {
+                return;
+            }
+
+            var databaseService = new DatabaseService();
+            foreach (var item in selected)
+            {
+                try
+                {
+                    await databaseService.SetImageFavoriteAsync(item.ImagePath, isFavorite);
+                    item.IsFavorite = isFavorite;
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"Error setting favorite status: {ex.Message}");
+                }
+            }
+
+            // Unfavorited items no longer belong in a favorites-only view.
+            if (!isFavorite && FavoritesOnlyCheckBox.IsChecked == true)
+            {
+                ApplyFilters();
+            }
+        }
+
+        private async void ArchiveSelected_Click(object sender, RoutedEventArgs e)
+        {
+            await SetArchivedForSelectionAsync(true);
+        }
+
+        private async void UnarchiveSelected_Click(object sender, RoutedEventArgs e)
+        {
+            await SetArchivedForSelectionAsync(false);
+        }
+
+        private async Task SetArchivedForSelectionAsync(bool archive)
+        {
+            var selected = ImagesGrid.SelectedItems.OfType<ImageGridItemViewModel>().ToList();
+            if (selected.Count == 0)
+            {
+                return;
+            }
+
+            foreach (var item in selected)
+            {
+                await SetArchivedAsync(item, archive);
+            }
+
+            // Newly archived items drop out of view unless archived items are shown.
+            if (archive && ShowArchivedCheckBox.IsChecked != true)
+            {
+                ApplyFilters();
+            }
+        }
+
+        private async Task SetArchivedAsync(ImageGridItemViewModel item, bool archive)
+        {
+            try
+            {
+                item.ImagePath = await ImageArchiveService.SetArchivedAsync(item.ImagePath, archive);
+                item.IsArchived = archive;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error setting archive status: {ex.Message}");
+            }
+        }
+
+        private async void DeleteSelected_Click(object sender, RoutedEventArgs e)
+        {
+            var selected = ImagesGrid.SelectedItems.OfType<ImageGridItemViewModel>().ToList();
+            if (selected.Count == 0)
+            {
+                return;
+            }
+
+            if (!await ConfirmDeleteAsync(selected.Count))
+            {
+                return;
+            }
+
+            foreach (var item in selected)
+            {
+                try
+                {
+                    await ImageDeleteService.DeleteAsync(item.ImagePath);
+                    RemoveImageFromCollections(item);
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"Error deleting image: {ex.Message}");
+                }
+            }
+
+            UpdateUI();
+        }
+
+        private async Task<bool> ConfirmDeleteAsync(int count)
+        {
+            var itemText = count == 1 ? "this item" : $"these {count} items";
+            var confirmDialog = new ContentDialog
+            {
+                Title = "Confirm Delete",
+                Content = $"Are you sure you want to delete {itemText}? This action cannot be undone.\n\nThe files will be permanently deleted from your computer.",
+                PrimaryButtonText = "Yes, Delete",
+                CloseButtonText = "Cancel",
+                DefaultButton = ContentDialogButton.Close,
+                XamlRoot = this.XamlRoot
+            };
+
+            confirmDialog.PrimaryButtonStyle = new Style(typeof(Button));
+            confirmDialog.PrimaryButtonStyle.Setters.Add(new Setter(Button.BackgroundProperty, new SolidColorBrush(Windows.UI.Color.FromArgb(255, 196, 43, 28))));
+            confirmDialog.PrimaryButtonStyle.Setters.Add(new Setter(Button.ForegroundProperty, new SolidColorBrush(Windows.UI.Color.FromArgb(255, 255, 255, 255))));
+
+            return await confirmDialog.ShowAsync() == ContentDialogResult.Primary;
+        }
+
+        private ImageGridItemViewModel? _fullScreenItem;
+
+        private void ShowFullScreenItem(ImageGridItemViewModel item)
+        {
+            _fullScreenItem = item;
+
+            if (item.IsVideo)
+            {
+                ShowFullScreenVideo(item.ImagePath);
+            }
+            else
+            {
+                ShowFullScreenImage(item.ImagePath);
+            }
+
+            UpdateFullScreenToolbar();
+        }
+
+        private void UpdateFullScreenToolbar()
+        {
+            if (_fullScreenItem == null)
+            {
+                return;
+            }
+
+            var index = _filteredImages.IndexOf(_fullScreenItem);
+            FullScreenPositionText.Text = index >= 0 ? $"{index + 1} / {_filteredImages.Count}" : string.Empty;
+            FullScreenPrevButton.IsEnabled = index > 0;
+            FullScreenNextButton.IsEnabled = index >= 0 && index < _filteredImages.Count - 1;
+
+            FullScreenFavoriteIcon.Foreground = new SolidColorBrush(
+                _fullScreenItem.IsFavorite ? Microsoft.UI.Colors.Gold : Microsoft.UI.Colors.White);
+            ToolTipService.SetToolTip(FullScreenFavoriteButton,
+                _fullScreenItem.IsFavorite ? "Remove from Favorites" : "Add to Favorites");
+
+            FullScreenArchiveIcon.Foreground = new SolidColorBrush(
+                _fullScreenItem.IsArchived ? Microsoft.UI.Colors.DodgerBlue : Microsoft.UI.Colors.White);
+            ToolTipService.SetToolTip(FullScreenArchiveButton,
+                _fullScreenItem.IsArchived ? "Unarchive" : "Archive");
+        }
+
+        private void NavigateFullScreen(int delta)
+        {
+            if (_fullScreenItem == null)
+            {
+                return;
+            }
+
+            var index = _filteredImages.IndexOf(_fullScreenItem);
+            if (index < 0)
+            {
+                return;
+            }
+
+            var newIndex = index + delta;
+            if (newIndex < 0 || newIndex >= _filteredImages.Count)
+            {
+                return;
+            }
+
+            ShowFullScreenItem(_filteredImages[newIndex]);
+        }
+
+        // After the current item leaves the filtered view (unfavorited, archived), re-filter the
+        // grid and land on the item that took its place.
+        private void RefreshFullScreenAfterRemoval(int previousIndex)
+        {
+            ApplyFilters();
+
+            if (_filteredImages.Count == 0)
+            {
+                HideFullScreenImage();
+                return;
+            }
+
+            var newIndex = Math.Min(Math.Max(previousIndex, 0), _filteredImages.Count - 1);
+            ShowFullScreenItem(_filteredImages[newIndex]);
+        }
+
+        private void FullScreenPrev_Click(object sender, RoutedEventArgs e)
+        {
+            NavigateFullScreen(-1);
+        }
+
+        private void FullScreenNext_Click(object sender, RoutedEventArgs e)
+        {
+            NavigateFullScreen(1);
+        }
+
+        private async void FullScreenFavorite_Click(object sender, RoutedEventArgs e)
+        {
+            if (_fullScreenItem == null)
+            {
+                return;
+            }
+
+            var item = _fullScreenItem;
+            var index = _filteredImages.IndexOf(item);
+            await ToggleFavoriteAsync(item);
+
+            if (!item.IsFavorite && FavoritesOnlyCheckBox.IsChecked == true)
+            {
+                RefreshFullScreenAfterRemoval(index);
+            }
+            else
+            {
+                UpdateFullScreenToolbar();
+            }
+        }
+
+        private async void FullScreenArchive_Click(object sender, RoutedEventArgs e)
+        {
+            if (_fullScreenItem == null)
+            {
+                return;
+            }
+
+            var item = _fullScreenItem;
+            var index = _filteredImages.IndexOf(item);
+            var archive = !item.IsArchived;
+
+            // Release the playing video's file handle so the file can be moved.
+            if (item.IsVideo)
+            {
+                ReleaseFullScreenMedia();
+            }
+
+            await SetArchivedAsync(item, archive);
+
+            if (archive && ShowArchivedCheckBox.IsChecked != true)
+            {
+                RefreshFullScreenAfterRemoval(index);
+            }
+            else
+            {
+                ShowFullScreenItem(item); // reload from the new path
+            }
+        }
+
+        private async void FullScreenSetBackground_Click(object sender, RoutedEventArgs e)
+        {
+            if (_fullScreenItem == null)
+            {
+                return;
+            }
+
+            if (_fullScreenItem.IsVideo)
+            {
+                await SetVideoAsBackground(_fullScreenItem.ImagePath);
+            }
+            else
+            {
+                SetAsBackground(_fullScreenItem.ImagePath);
+            }
+        }
+
+        private async void FullScreenDelete_Click(object sender, RoutedEventArgs e)
+        {
+            if (_fullScreenItem == null)
+            {
+                return;
+            }
+
+            var item = _fullScreenItem;
+            if (!await ConfirmDeleteAsync(1))
+            {
+                return;
+            }
+
+            var index = _filteredImages.IndexOf(item);
+
+            // Release file handles so the file can be deleted.
+            FullScreenImage.Source = null;
+            ReleaseFullScreenMedia();
+
+            try
+            {
+                await ImageDeleteService.DeleteAsync(item.ImagePath);
+                RemoveImageFromCollections(item);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error deleting image: {ex.Message}");
+            }
+
+            UpdateUI();
+
+            if (_filteredImages.Count == 0)
+            {
+                HideFullScreenImage();
+                return;
+            }
+
+            ShowFullScreenItem(_filteredImages[Math.Min(Math.Max(index, 0), _filteredImages.Count - 1)]);
+        }
+
+        private void FullScreenOverlay_PointerPressed(object sender, PointerRoutedEventArgs e)
+        {
+            var properties = e.GetCurrentPoint(FullScreenOverlay).Properties;
+            if (properties.IsXButton1Pressed)
+            {
+                NavigateFullScreen(-1);
+                e.Handled = true;
+            }
+            else if (properties.IsXButton2Pressed)
+            {
+                NavigateFullScreen(1);
+                e.Handled = true;
+            }
         }
 
         private void ShowFullScreenImage(string imagePath)
@@ -262,6 +652,7 @@ namespace WallTrek.Views
             {
                 if (File.Exists(imagePath))
                 {
+                    ReleaseFullScreenMedia();
                     var bitmap = new BitmapImage(new Uri(imagePath));
                     FullScreenImage.Source = bitmap;
                     FullScreenImage.Visibility = Visibility.Visible;
@@ -284,6 +675,7 @@ namespace WallTrek.Views
             {
                 if (File.Exists(videoPath))
                 {
+                    ReleaseFullScreenMedia();
                     fullScreenVideoSource = Windows.Media.Core.MediaSource.CreateFromUri(new Uri(videoPath));
                     FullScreenVideo.Source = fullScreenVideoSource;
                     FullScreenVideo.MediaPlayer.IsLoopingEnabled = true;
@@ -303,8 +695,13 @@ namespace WallTrek.Views
         {
             FullScreenOverlay.Visibility = Visibility.Collapsed;
             FullScreenImage.Source = null;
+            ReleaseFullScreenMedia();
+            _fullScreenItem = null;
+        }
 
-            // Release the video file handle so the mp4 can be deleted or moved while the app runs.
+        // Release the video file handle so the mp4 can be deleted or moved while the app runs.
+        private void ReleaseFullScreenMedia()
+        {
             FullScreenVideo.MediaPlayer?.Pause();
             FullScreenVideo.Source = null;
             fullScreenVideoSource?.Dispose();
@@ -316,6 +713,36 @@ namespace WallTrek.Views
             if (e.Key == VirtualKey.Escape)
             {
                 HideFullScreenImage();
+                e.Handled = true;
+            }
+            else if (e.Key == VirtualKey.Left)
+            {
+                NavigateFullScreen(-1);
+                e.Handled = true;
+            }
+            else if (e.Key == VirtualKey.Right)
+            {
+                NavigateFullScreen(1);
+                e.Handled = true;
+            }
+            else if (e.Key == VirtualKey.F)
+            {
+                FullScreenFavorite_Click(this, new RoutedEventArgs());
+                e.Handled = true;
+            }
+            else if (e.Key == VirtualKey.A)
+            {
+                FullScreenArchive_Click(this, new RoutedEventArgs());
+                e.Handled = true;
+            }
+            else if (e.Key == VirtualKey.B)
+            {
+                FullScreenSetBackground_Click(this, new RoutedEventArgs());
+                e.Handled = true;
+            }
+            else if (e.Key == VirtualKey.Delete)
+            {
+                FullScreenDelete_Click(this, new RoutedEventArgs());
                 e.Handled = true;
             }
         }
@@ -503,6 +930,9 @@ namespace WallTrek.Views
                         case "ToggleFavoriteItem":
                             menuItem.Text = viewModel.IsFavorite ? "Remove from Favorites" : "Add to Favorites";
                             break;
+                        case "ToggleArchiveItem":
+                            menuItem.Text = viewModel.IsArchived ? "Unarchive" : "Archive";
+                            break;
                         case "GenerateVideoItem":
                             menuItem.Visibility = viewModel.IsVideo ? Visibility.Collapsed : Visibility.Visible;
                             break;
@@ -515,20 +945,39 @@ namespace WallTrek.Views
         {
             if (sender is MenuFlyoutItem menuItem && menuItem.Tag is ImageGridItemViewModel viewModel)
             {
-                try
-                {
-                    var newFavoriteStatus = !viewModel.IsFavorite;
+                await ToggleFavoriteAsync(viewModel);
+            }
+        }
 
-                    // Update database
-                    var databaseService = new DatabaseService();
-                    await databaseService.SetImageFavoriteAsync(viewModel.ImagePath, newFavoriteStatus);
+        private async Task ToggleFavoriteAsync(ImageGridItemViewModel viewModel)
+        {
+            try
+            {
+                var newFavoriteStatus = !viewModel.IsFavorite;
 
-                    // Update view model
-                    viewModel.IsFavorite = newFavoriteStatus;
-                }
-                catch (Exception ex)
+                // Update database
+                var databaseService = new DatabaseService();
+                await databaseService.SetImageFavoriteAsync(viewModel.ImagePath, newFavoriteStatus);
+
+                // Update view model
+                viewModel.IsFavorite = newFavoriteStatus;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error toggling favorite status: {ex.Message}");
+            }
+        }
+
+        private async void ToggleArchive_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is MenuFlyoutItem menuItem && menuItem.Tag is ImageGridItemViewModel viewModel)
+            {
+                var archive = !viewModel.IsArchived;
+                await SetArchivedAsync(viewModel, archive);
+
+                if (archive && ShowArchivedCheckBox.IsChecked != true)
                 {
-                    System.Diagnostics.Debug.WriteLine($"Error toggling favorite status: {ex.Message}");
+                    ApplyFilters();
                 }
             }
         }
@@ -555,9 +1004,18 @@ namespace WallTrek.Views
             var imageToRemove = _allImages.FirstOrDefault(img => img.ImagePath == imagePath);
             if (imageToRemove != null)
             {
-                _allImages.Remove(imageToRemove);
-                _filteredImages.Remove(imageToRemove);
-                _displayedImages.Remove(imageToRemove);
+                RemoveImageFromCollections(imageToRemove);
+                UpdateUI();
+            }
+        }
+
+        private void RemoveImageFromCollections(ImageGridItemViewModel image)
+        {
+            _allImages.Remove(image);
+            _filteredImages.Remove(image);
+            if (_displayedImages.Remove(image))
+            {
+                _currentDisplayed--;
             }
         }
     }
@@ -587,6 +1045,20 @@ namespace WallTrek.Views
                 {
                     _isFavorite = value;
                     PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(nameof(IsFavorite)));
+                }
+            }
+        }
+
+        private bool _isArchived;
+        public bool IsArchived
+        {
+            get => _isArchived;
+            set
+            {
+                if (_isArchived != value)
+                {
+                    _isArchived = value;
+                    PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(nameof(IsArchived)));
                 }
             }
         }

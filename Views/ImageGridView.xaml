@@ -29,8 +29,8 @@
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
 
-                <!-- Left side: Filters -->
-                <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="15">
+                <!-- Left side: Filters (hidden while selecting) -->
+                <StackPanel x:Name="FiltersPanel" Grid.Column="0" Orientation="Horizontal" Spacing="15">
                     <CheckBox x:Name="FavoritesOnlyCheckBox"
                               Content="Favorites Only"
                               Checked="FilterCheckBox_Changed"
@@ -39,15 +39,66 @@
                               Content="Not Uploaded"
                               Checked="FilterCheckBox_Changed"
                               Unchecked="FilterCheckBox_Changed"/>
+                    <CheckBox x:Name="ShowArchivedCheckBox"
+                              Content="Show Archived"
+                              Checked="FilterCheckBox_Changed"
+                              Unchecked="FilterCheckBox_Changed"/>
                 </StackPanel>
 
-                <!-- Right side: Count -->
-                <TextBlock Grid.Column="1"
-                           x:Name="ImageCountTextBlock"
-                           Text="0/0 Images"
-                           VerticalAlignment="Center"
-                           FontWeight="SemiBold"
-                           HorizontalAlignment="Right"/>
+                <!-- Left side: Selection actions (selection mode only) -->
+                <StackPanel x:Name="SelectionActionsPanel"
+                            Grid.Column="0"
+                            Orientation="Horizontal"
+                            Spacing="10"
+                            Visibility="Collapsed">
+                    <TextBlock x:Name="SelectionCountText"
+                               Text="0 selected"
+                               VerticalAlignment="Center"
+                               FontWeight="SemiBold"
+                               MinWidth="80"/>
+                    <Button x:Name="SelectAllButton" Content="Select All" Click="SelectAllButton_Click"/>
+                    <Button x:Name="FavoriteSelectedButton" Click="FavoriteSelected_Click" IsEnabled="False">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <FontIcon Glyph="&#xE735;" FontSize="14"/>
+                            <TextBlock Text="Favorite"/>
+                        </StackPanel>
+                    </Button>
+                    <Button x:Name="UnfavoriteSelectedButton" Click="UnfavoriteSelected_Click" IsEnabled="False">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <FontIcon Glyph="&#xE734;" FontSize="14"/>
+                            <TextBlock Text="Unfavorite"/>
+                        </StackPanel>
+                    </Button>
+                    <Button x:Name="ArchiveSelectedButton" Click="ArchiveSelected_Click" IsEnabled="False">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <FontIcon Glyph="&#xE7B8;" FontSize="14"/>
+                            <TextBlock Text="Archive"/>
+                        </StackPanel>
+                    </Button>
+                    <Button x:Name="UnarchiveSelectedButton" Content="Unarchive" Click="UnarchiveSelected_Click" IsEnabled="False"/>
+                    <Button x:Name="DeleteSelectedButton"
+                            Click="DeleteSelected_Click"
+                            IsEnabled="False"
+                            Background="#C42B1C"
+                            Foreground="White">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <FontIcon Glyph="&#xE74D;" FontSize="14"/>
+                            <TextBlock Text="Delete"/>
+                        </StackPanel>
+                    </Button>
+                </StackPanel>
+
+                <!-- Right side: Select toggle + count -->
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="12" HorizontalAlignment="Right">
+                    <ToggleButton x:Name="SelectModeButton"
+                                  Content="Select"
+                                  Checked="SelectModeButton_Checked"
+                                  Unchecked="SelectModeButton_Unchecked"/>
+                    <TextBlock x:Name="ImageCountTextBlock"
+                               Text="0/0 Images"
+                               VerticalAlignment="Center"
+                               FontWeight="SemiBold"/>
+                </StackPanel>
             </Grid>
         </StackPanel>
 
@@ -55,17 +106,17 @@
             <StackPanel HorizontalAlignment="Center">
                 <GridView x:Name="ImagesGrid"
                           SelectionMode="None"
-                          IsItemClickEnabled="False"
+                          IsItemClickEnabled="True"
+                          ItemClick="ImagesGrid_ItemClick"
+                          SelectionChanged="ImagesGrid_SelectionChanged"
+                          KeyDown="ImagesGrid_KeyDown"
                           HorizontalAlignment="Center">
                     <GridView.ItemTemplate>
                         <DataTemplate x:DataType="local:ImageGridItemViewModel">
                             <Border CornerRadius="8" BorderBrush="Gray" BorderThickness="1"
                                     Background="Transparent" Width="200" Height="200" Margin="4">
-                                <Grid>
-                                    <Button Background="Transparent" BorderThickness="0"
-                                            Padding="0" Click="ImageButton_Click" RightTapped="ImageButton_RightTapped"
-                                            Tag="{x:Bind}">
-                                        <Button.ContextFlyout>
+                                <Grid Background="Transparent">
+                                    <Grid.ContextFlyout>
                                             <MenuFlyout Opening="ImageContextMenu_Opening">
                                                 <MenuFlyoutItem Text="Set as Background"
                                                               Click="SetAsBackground_Click"
@@ -103,6 +154,14 @@
                                                         <FontIcon Glyph="&#xE735;"/>
                                                     </MenuFlyoutItem.Icon>
                                                 </MenuFlyoutItem>
+                                                <MenuFlyoutItem x:Name="ToggleArchiveItem"
+                                                              Text="Archive"
+                                                              Click="ToggleArchive_Click"
+                                                              Tag="{x:Bind}">
+                                                    <MenuFlyoutItem.Icon>
+                                                        <FontIcon Glyph="&#xE7B8;"/>
+                                                    </MenuFlyoutItem.Icon>
+                                                </MenuFlyoutItem>
                                                 <MenuFlyoutSeparator/>
                                                 <MenuFlyoutItem Text="Open Image"
                                                               Click="OpenImage_Click"
@@ -123,12 +182,11 @@
                                                     </MenuFlyoutItem.Icon>
                                                 </MenuFlyoutItem>
                                             </MenuFlyout>
-                                        </Button.ContextFlyout>
-                                        <Image Source="{x:Bind ThumbnailImage, Mode=OneWay}"
-                                               Stretch="UniformToFill"
-                                               HorizontalAlignment="Center"
-                                               VerticalAlignment="Center"/>
-                                    </Button>
+                                    </Grid.ContextFlyout>
+                                    <Image Source="{x:Bind ThumbnailImage, Mode=OneWay}"
+                                           Stretch="UniformToFill"
+                                           HorizontalAlignment="Center"
+                                           VerticalAlignment="Center"/>
 
                                     <!-- Video indicator (center play glyph) -->
                                     <Border Background="#80000000"
@@ -169,6 +227,22 @@
                                             Margin="0,5,5,0"
                                             Visibility="{x:Bind IsUploaded, Converter={StaticResource BooleanToVisibilityConverter}, Mode=OneWay}">
                                         <FontIcon Glyph="&#xE72E;"
+                                                FontSize="12"
+                                                Foreground="White"
+                                                HorizontalAlignment="Center"
+                                                VerticalAlignment="Center"/>
+                                    </Border>
+
+                                    <!-- Archived indicator (bottom-right) -->
+                                    <Border Background="#80000000"
+                                            CornerRadius="12"
+                                            Width="24" Height="24"
+                                            HorizontalAlignment="Right"
+                                            VerticalAlignment="Bottom"
+                                            Margin="0,0,5,5"
+                                            IsHitTestVisible="False"
+                                            Visibility="{x:Bind IsArchived, Converter={StaticResource BooleanToVisibilityConverter}, Mode=OneWay}">
+                                        <FontIcon Glyph="&#xE7B8;"
                                                 FontSize="12"
                                                 Foreground="White"
                                                 HorizontalAlignment="Center"
@@ -216,13 +290,73 @@
         <!-- Full screen image/video popup -->
         <Border x:Name="FullScreenOverlay" Grid.RowSpan="2" Background="Black" Opacity="0.9"
                 Visibility="Collapsed" Tapped="FullScreenOverlay_Tapped" KeyDown="FullScreenOverlay_KeyDown"
+                PointerPressed="FullScreenOverlay_PointerPressed"
                 IsTabStop="True" AllowFocusOnInteraction="True">
             <Grid>
-                <Image x:Name="FullScreenImage" Stretch="Uniform" HorizontalAlignment="Center"
-                       VerticalAlignment="Center" Tapped="FullScreenImage_Tapped"/>
-                <MediaPlayerElement x:Name="FullScreenVideo" Stretch="Uniform" HorizontalAlignment="Center"
-                                    VerticalAlignment="Center" AreTransportControlsEnabled="False"
-                                    AutoPlay="True" Visibility="Collapsed" Tapped="FullScreenImage_Tapped"/>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+
+                <!-- Toolbar above the image -->
+                <Grid Grid.Row="0" Padding="10,8">
+                    <StackPanel Orientation="Horizontal" Spacing="4" HorizontalAlignment="Center">
+                        <Button x:Name="FullScreenFavoriteButton" Click="FullScreenFavorite_Click"
+                                Background="Transparent" BorderThickness="0">
+                            <StackPanel HorizontalAlignment="Center" Spacing="1">
+                                <FontIcon x:Name="FullScreenFavoriteIcon" Glyph="&#xE735;" Foreground="White"/>
+                                <TextBlock Text="F" FontSize="9" Foreground="#B0FFFFFF" HorizontalAlignment="Center"/>
+                            </StackPanel>
+                        </Button>
+                        <Button x:Name="FullScreenArchiveButton" Click="FullScreenArchive_Click"
+                                Background="Transparent" BorderThickness="0">
+                            <StackPanel HorizontalAlignment="Center" Spacing="1">
+                                <FontIcon x:Name="FullScreenArchiveIcon" Glyph="&#xE7B8;" Foreground="White"/>
+                                <TextBlock Text="A" FontSize="9" Foreground="#B0FFFFFF" HorizontalAlignment="Center"/>
+                            </StackPanel>
+                        </Button>
+                        <Button x:Name="FullScreenSetBackgroundButton" Click="FullScreenSetBackground_Click"
+                                Background="Transparent" BorderThickness="0"
+                                ToolTipService.ToolTip="Set as Background">
+                            <StackPanel HorizontalAlignment="Center" Spacing="1">
+                                <FontIcon Glyph="&#xE91B;" Foreground="White"/>
+                                <TextBlock Text="B" FontSize="9" Foreground="#B0FFFFFF" HorizontalAlignment="Center"/>
+                            </StackPanel>
+                        </Button>
+                        <Button x:Name="FullScreenDeleteButton" Click="FullScreenDelete_Click"
+                                Background="Transparent" BorderThickness="0"
+                                ToolTipService.ToolTip="Delete">
+                            <StackPanel HorizontalAlignment="Center" Spacing="1">
+                                <FontIcon Glyph="&#xE74D;" Foreground="White"/>
+                                <TextBlock Text="Del" FontSize="9" Foreground="#B0FFFFFF" HorizontalAlignment="Center"/>
+                            </StackPanel>
+                        </Button>
+                    </StackPanel>
+                    <TextBlock x:Name="FullScreenPositionText"
+                               HorizontalAlignment="Right" VerticalAlignment="Center"
+                               Foreground="White" FontWeight="SemiBold" Margin="0,0,10,0"/>
+                </Grid>
+
+                <!-- Media with nav arrows on the sides -->
+                <Grid Grid.Row="1">
+                    <Image x:Name="FullScreenImage" Stretch="Uniform" HorizontalAlignment="Center"
+                           VerticalAlignment="Center" Tapped="FullScreenImage_Tapped"/>
+                    <MediaPlayerElement x:Name="FullScreenVideo" Stretch="Uniform" HorizontalAlignment="Center"
+                                        VerticalAlignment="Center" AreTransportControlsEnabled="False"
+                                        AutoPlay="True" Visibility="Collapsed" Tapped="FullScreenImage_Tapped"/>
+                    <Button x:Name="FullScreenPrevButton" Click="FullScreenPrev_Click"
+                            HorizontalAlignment="Left" VerticalAlignment="Center" Margin="20,0,0,0"
+                            Width="48" Height="48" CornerRadius="24"
+                            Background="#60000000" BorderThickness="0">
+                        <FontIcon Glyph="&#xE76B;" Foreground="White"/>
+                    </Button>
+                    <Button x:Name="FullScreenNextButton" Click="FullScreenNext_Click"
+                            HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,20,0"
+                            Width="48" Height="48" CornerRadius="24"
+                            Background="#60000000" BorderThickness="0">
+                        <FontIcon Glyph="&#xE76C;" Foreground="White"/>
+                    </Button>
+                </Grid>
             </Grid>
         </Border>
     </Grid>

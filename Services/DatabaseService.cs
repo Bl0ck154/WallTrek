@@ -63,6 +63,7 @@ namespace WallTrek.Services
             bool hasMediaTypeColumn = false;
             bool hasSourceImagePathColumn = false;
             bool hasVideoModelColumn = false;
+            bool hasIsArchivedColumn = false;
 
             using (var reader = checkTitleColumnCommand.ExecuteReader())
             {
@@ -74,6 +75,7 @@ namespace WallTrek.Services
                     if (columnName == "MediaType") hasMediaTypeColumn = true;
                     if (columnName == "SourceImagePath") hasSourceImagePathColumn = true;
                     if (columnName == "VideoModel") hasVideoModelColumn = true;
+                    if (columnName == "IsArchived") hasIsArchivedColumn = true;
                 }
             }
 
@@ -114,6 +116,15 @@ namespace WallTrek.Services
                 var addVideoModelCommand = connection.CreateCommand();
                 addVideoModelCommand.CommandText = "ALTER TABLE GeneratedImages ADD COLUMN VideoModel TEXT NULL;";
                 addVideoModelCommand.ExecuteNonQuery();
+            }
+
+            // Migration 4: archived items are hidden by default and their files live in an
+            // "archive" subfolder next to the originals.
+            if (!hasIsArchivedColumn)
+            {
+                var addIsArchivedCommand = connection.CreateCommand();
+                addIsArchivedCommand.CommandText = "ALTER TABLE GeneratedImages ADD COLUMN IsArchived INTEGER NOT NULL DEFAULT 0;";
+                addIsArchivedCommand.ExecuteNonQuery();
             }
         }
 
@@ -181,6 +192,22 @@ namespace WallTrek.Services
             await updateCommand.ExecuteNonQueryAsync();
         }
 
+        public async Task SetImageArchivedAsync(string oldPath, string newPath, bool isArchived)
+        {
+            using var connection = new SqliteConnection(connectionString);
+            await connection.OpenAsync();
+
+            // Also fix up video rows that reference the moved file as their source image.
+            var updateCommand = connection.CreateCommand();
+            updateCommand.CommandText = @"
+                UPDATE GeneratedImages SET ImagePath = @newPath, IsArchived = @isArchived WHERE ImagePath = @oldPath;
+                UPDATE GeneratedImages SET SourceImagePath = @newPath WHERE SourceImagePath = @oldPath;";
+            updateCommand.Parameters.AddWithValue("@oldPath", oldPath);
+            updateCommand.Parameters.AddWithValue("@newPath", newPath);
+            updateCommand.Parameters.AddWithValue("@isArchived", isArchived ? 1 : 0);
+            await updateCommand.ExecuteNonQueryAsync();
+        }
+
         public async Task SetDeviantArtUploadAsync(string imagePath, bool isUploaded, string? deviantArtUrl = null)
         {
             using var connection = new SqliteConnection(connectionString);
@@ -207,7 +234,7 @@ namespace WallTrek.Services
             var command = connection.CreateCommand();
 
             command.CommandText = $@"
-                SELECT gi.ImagePath, gi.GeneratedDate, gi.PromptText, gi.IsFavorite, gi.IsUploadedToDeviantArt, gi.DeviantArtUrl, gi.LlmModel, gi.ImgModel, gi.Title, gi.Tags, gi.MediaType, gi.SourceImagePath, gi.VideoModel
+                SELECT gi.ImagePath, gi.GeneratedDate, gi.PromptText, gi.IsFavorite, gi.IsUploadedToDeviantArt, gi.DeviantArtUrl, gi.LlmModel, gi.ImgModel, gi.Title, gi.Tags, gi.MediaType, gi.SourceImagePath, gi.VideoModel, gi.IsArchived
                 FROM GeneratedImages gi
                 ORDER BY gi.GeneratedDate DESC
                 LIMIT @limit OFFSET @offset";
@@ -234,7 +261,8 @@ namespace WallTrek.Services
                     Tags = reader.IsDBNull(9) ? string.Empty : reader.GetString(9),
                     MediaType = reader.IsDBNull(10) ? "image" : reader.GetString(10),
                     SourceImagePath = reader.IsDBNull(11) ? string.Empty : reader.GetString(11),
-                    VideoModel = reader.IsDBNull(12) ? string.Empty : reader.GetString(12)
+                    VideoModel = reader.IsDBNull(12) ? string.Empty : reader.GetString(12),
+                    IsArchived = !reader.IsDBNull(13) && reader.GetInt32(13) == 1
                 });
             }
 
@@ -314,5 +342,6 @@ namespace WallTrek.Services
         public string MediaType { get; set; } = "image";
         public string SourceImagePath { get; set; } = string.Empty;
         public string VideoModel { get; set; } = string.Empty;
+        public bool IsArchived { get; set; }
     }
 }
