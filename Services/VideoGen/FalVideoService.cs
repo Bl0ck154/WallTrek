@@ -75,6 +75,7 @@ namespace WallTrek.Services.VideoGen
                         ["resolution"] = request.Model.Resolution,
                         ["duration"] = request.DurationSeconds,
                         ["aspect_ratio"] = "16:9",
+                        ["generate_audio_switch"] = false,
                     };
                 case VideoEndpointKind.KlingStartEnd:
                     return new Dictionary<string, object>
@@ -83,6 +84,16 @@ namespace WallTrek.Services.VideoGen
                         ["start_image_url"] = imageDataUri,
                         ["end_image_url"] = imageDataUri,
                         ["duration"] = request.DurationSeconds.ToString(),
+                    };
+                case VideoEndpointKind.KlingV3StartEnd:
+                    return new Dictionary<string, object>
+                    {
+                        ["prompt"] = request.Prompt,
+                        ["start_image_url"] = imageDataUri,
+                        ["end_image_url"] = imageDataUri,
+                        ["duration"] = request.DurationSeconds.ToString(),
+                        // WallTrek creates silent looping wallpapers; audio would cost 50% more.
+                        ["generate_audio"] = false,
                     };
                 default:
                     throw new InvalidOperationException($"Unknown video endpoint kind: {request.Model.Kind}");

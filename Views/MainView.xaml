@@ -75,7 +75,7 @@
                                             SelectionChanged="CategoryProfileSelectionControl_SelectionChanged">
                         <wt:MultiSelectComboBox.ItemTemplate>
                             <DataTemplate>
-                                <TextBlock Text="{Binding}" Padding="2,3"/>
+                                <TextBlock Text="{Binding DisplayName}" Padding="2,3"/>
                             </DataTemplate>
                         </wt:MultiSelectComboBox.ItemTemplate>
                     </wt:MultiSelectComboBox>
@@ -93,7 +93,7 @@
                                             SelectionChanged="WordListSelectionControl_SelectionChanged">
                         <wt:MultiSelectComboBox.ItemTemplate>
                             <DataTemplate>
-                                <TextBlock Text="{Binding}" Padding="2,3"/>
+                                <TextBlock Text="{Binding DisplayName}" Padding="2,3"/>
                             </DataTemplate>
                         </wt:MultiSelectComboBox.ItemTemplate>
                     </wt:MultiSelectComboBox>
@@ -117,6 +117,27 @@
                             </DataTemplate>
                         </wt:MultiSelectComboBox.ItemTemplate>
                     </wt:MultiSelectComboBox>
+                </Grid>
+                <Grid MinWidth="72">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+                    <TextBlock Grid.Row="0"
+                               Text="Iterative"
+                               FontWeight="SemiBold"
+                               FontSize="12"
+                               Margin="0,0,0,2"
+                               ToolTipService.ToolTip="Generate once per random word. Each call picks one of the selected LLMs and revises the previous prompt with the next word; only the final prompt is used. Example: 4 words = 4 LLM calls."/>
+                    <CheckBox Grid.Row="1"
+                              x:Name="IterativePromptCheckBox"
+                              Content="On"
+                              Height="{StaticResource RowControlHeight}"
+                              VerticalAlignment="Bottom"
+                              VerticalContentAlignment="Center"
+                              Checked="IterativePromptCheckBox_Changed"
+                              Unchecked="IterativePromptCheckBox_Changed"
+                              ToolTipService.ToolTip="Generate once per random word. Each call picks one of the selected LLMs and revises the previous prompt with the next word; only the final prompt is used. Example: 4 words = 4 LLM calls."/>
                 </Grid>
                 <Button x:Name="RandomPromptButton"
                         Content="Generate Prompt"

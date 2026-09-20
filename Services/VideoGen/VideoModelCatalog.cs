@@ -6,25 +6,27 @@ namespace WallTrek.Services.VideoGen
     /// <summary>
     /// Catalog of image-to-video options for the Generate Video dialog. All entries support a
     /// start + end frame so the source image can be used as both, producing a seamless loop.
-    /// Prices are approximate per-clip and display-only (fal.ai list prices, July 2026).
+    /// Prices are approximate per-clip and display-only (fal.ai list prices, September 2026).
     /// </summary>
     public static class VideoModelCatalog
     {
         public static IReadOnlyList<VideoModelOption> Options { get; } = new List<VideoModelOption>
         {
-            new() { Id = "pixverse-v5-transition@540p", Kind = VideoEndpointKind.PixVerseTransition,
-                    Endpoint = "fal-ai/pixverse/v5/transition", Name = "PixVerse V5", Quality = "540p",
+            new() { Id = "pixverse-v6-transition@540p", Kind = VideoEndpointKind.PixVerseTransition,
+                    Endpoint = "fal-ai/pixverse/v6/transition", Name = "PixVerse V6", Quality = "540p",
                     Resolution = "540p", Durations = new[] { 5, 8 },
-                    // 8s is double the listed 5s price (PixVerse convention).
-                    CentsByDuration = new() { [5] = 15m, [8] = 30m } },
-            new() { Id = "pixverse-v5-transition@720p", Kind = VideoEndpointKind.PixVerseTransition,
-                    Endpoint = "fal-ai/pixverse/v5/transition", Name = "PixVerse V5", Quality = "720p",
+                    CentsPerSecond = 3.5m },
+            new() { Id = "pixverse-v6-transition@720p", Kind = VideoEndpointKind.PixVerseTransition,
+                    Endpoint = "fal-ai/pixverse/v6/transition", Name = "PixVerse V6", Quality = "720p",
                     Resolution = "720p", Durations = new[] { 5, 8 },
-                    CentsByDuration = new() { [5] = 20m, [8] = 40m } },
-            new() { Id = "pixverse-v5-transition@1080p", Kind = VideoEndpointKind.PixVerseTransition,
-                    Endpoint = "fal-ai/pixverse/v5/transition", Name = "PixVerse V5", Quality = "1080p",
+                    CentsPerSecond = 4.5m },
+            new() { Id = "pixverse-v6-transition@1080p", Kind = VideoEndpointKind.PixVerseTransition,
+                    Endpoint = "fal-ai/pixverse/v6/transition", Name = "PixVerse V6", Quality = "1080p",
                     Resolution = "1080p", Durations = new[] { 5, 8 },
-                    CentsByDuration = new() { [5] = 40m, [8] = 80m } },
+                    CentsPerSecond = 9m },
+            new() { Id = "kling-v3-pro", Kind = VideoEndpointKind.KlingV3StartEnd,
+                    Endpoint = "fal-ai/kling-video/v3/pro/image-to-video", Name = "Kling 3.0", Quality = "Pro",
+                    Durations = new[] { 5, 8, 10 }, CentsPerSecond = 11.2m },
             new() { Id = "kling-o1@1080p", Kind = VideoEndpointKind.KlingStartEnd,
                     Endpoint = "fal-ai/kling-video/o1/image-to-video", Name = "Kling O1", Quality = "1080p",
                     Durations = new[] { 5, 8, 10 }, CentsPerSecond = 11.2m },

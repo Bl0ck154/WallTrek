@@ -26,6 +26,17 @@ namespace WallTrek.Views
         // Guards the profile/word-list quick-switch dropdowns while we populate them in code.
         private bool _suppressProfileEvents;
 
+        // Keeps the visible "None" option distinct from a profile or word-list file that is
+        // actually named "None". The empty settings value is reserved for skipping a source.
+        private sealed class PromptSourceOption
+        {
+            public PromptSourceOption(string? name) => Name = name;
+
+            public string? Name { get; }
+            public string DisplayName => Name ?? "None";
+            public string SettingsValue => Name ?? PromptGeneratorService.NoSourceSelection;
+        }
+
         public void SetPromptText(string prompt)
         {
             PromptTextBox.Text = prompt;
@@ -81,6 +92,9 @@ namespace WallTrek.Views
 
             // Populate the random-prompt profile, word-list, and word-count multi-select dropdowns.
             PopulateProfileSelectors();
+            _suppressProfileEvents = true;
+            IterativePromptCheckBox.IsChecked = settings.IterativePromptGeneration;
+            _suppressProfileEvents = false;
 
             UpdateCostEstimate();
         }
@@ -289,7 +303,8 @@ namespace WallTrek.Views
                     {
                         Prompt = PromptTextBox.Text,
                         Title = titleResult.Title,
-                        Tags = titleResult.Tags
+                        Tags = titleResult.Tags,
+                        LlmModelId = selectedLlm.ModelId
                     };
                 }
             }
@@ -309,7 +324,9 @@ namespace WallTrek.Views
             var imageGenerator = ImageGenerationServiceFactory.CreateService(selectedOption);
 
             // Record the models actually used for this generation.
-            var currentLlmModel = selectedLlm.ModelId;
+            var currentLlmModel = string.IsNullOrEmpty(promptResult.LlmModelId)
+                ? selectedLlm.ModelId
+                : promptResult.LlmModelId;
             var currentImgModel = selectedOption.ModelId;
 
             if (string.IsNullOrEmpty(currentLlmModel))
@@ -431,6 +448,7 @@ namespace WallTrek.Views
             RandomImageButton.IsEnabled = !generating;
             CancelButton.Visibility = generating ? Visibility.Visible : Visibility.Collapsed;
             RandomPromptButton.IsEnabled = !generating;
+            IterativePromptCheckBox.IsEnabled = !generating;
             PromptTextBox.IsEnabled = !generating;
             GenerationProgressBar.Visibility = generating ? Visibility.Visible : Visibility.Collapsed;
         }
@@ -476,18 +494,28 @@ namespace WallTrek.Views
         // Returns false on a soft failure (model returned nothing); throws to abort the batch.
         private async Task<bool> GenerateRandomPromptCore(CancellationToken token, string batchLabel = "")
         {
-            if (string.IsNullOrEmpty(Settings.Instance.ApiKey))
+            var modelPool = LlmSelectionControl.SelectedItems.Cast<LlmModelOption>().ToList();
+            if (modelPool.Count == 0)
             {
-                throw new GenerationAbortedException("Please set your OpenAI API key in Settings first.", navigateToSettings: true);
+                modelPool.Add(LlmModelCatalog.FindById(Settings.Instance.SelectedLlmModel) ?? LlmModelCatalog.Default);
             }
 
-            SetStatus($"Generating random prompt{batchLabel}...", Microsoft.UI.Colors.DodgerBlue);
+            foreach (var model in modelPool)
+            {
+                EnsureLlmApiKey(model);
+            }
 
-            var selectedLlm = PickLlmModel();
-            Logger.Info($"Generating random prompt — LLM: {selectedLlm.ModelId}");
+            string SelectModelId() => modelPool[_random.Next(modelPool.Count)].ModelId;
+
+            void OnIterationStarted(int iteration, int total, string modelId)
+            {
+                var stepLabel = total > 1 ? $" — step {iteration} of {total}" : string.Empty;
+                SetStatus($"Generating random prompt{batchLabel}{stepLabel}...", Microsoft.UI.Colors.DodgerBlue);
+                Logger.Info($"Generating random prompt — step {iteration}/{total}, LLM: {modelId}");
+            }
 
             var promptGenerator = new PromptGeneratorService();
-            var result = await promptGenerator.GenerateRandomPromptAsync(token, selectedLlm.ModelId);
+            var result = await promptGenerator.GenerateRandomPromptAsync(token, SelectModelId, OnIterationStarted);
 
             if (result != null)
             {
@@ -499,6 +527,25 @@ namespace WallTrek.Views
 
             SetStatus("Failed to generate random prompt.", Microsoft.UI.Colors.OrangeRed);
             return false;
+        }
+
+        private static void EnsureLlmApiKey(LlmModelOption model)
+        {
+            var settings = Settings.Instance;
+            if (LlmServiceFactory.IsAnthropicModel(model.ModelId) && string.IsNullOrEmpty(settings.AnthropicApiKey))
+            {
+                throw new GenerationAbortedException("Please set your Anthropic API key in Settings first.", navigateToSettings: true);
+            }
+
+            if (LlmServiceFactory.IsGoogleModel(model.ModelId) && string.IsNullOrEmpty(settings.GoogleApiKey))
+            {
+                throw new GenerationAbortedException("Please set your Google API key in Settings first.", navigateToSettings: true);
+            }
+
+            if (LlmServiceFactory.IsOpenAIModel(model.ModelId) && string.IsNullOrEmpty(settings.ApiKey))
+            {
+                throw new GenerationAbortedException("Please set your OpenAI API key in Settings first.", navigateToSettings: true);
+            }
         }
 
         private void LlmSelectionControl_SelectionChanged(object? sender, EventArgs e)
@@ -546,15 +593,21 @@ namespace WallTrek.Views
         {
             _suppressProfileEvents = true;
 
-            var profiles = CategoryProfileService.ListProfiles().ToList();
+            var profiles = CategoryProfileService.ListProfiles()
+                .Select(name => new PromptSourceOption(name))
+                .Prepend(new PromptSourceOption(null))
+                .ToList();
             CategoryProfileSelectionControl.ItemsSource = profiles;
             CategoryProfileSelectionControl.SetSelectedItems(
-                ResolveNameSelection(profiles, Settings.Instance.SelectedCategoryProfiles, Settings.Instance.SelectedCategoryProfile));
+                ResolveSourceSelection(profiles, Settings.Instance.SelectedCategoryProfiles, Settings.Instance.SelectedCategoryProfile));
 
-            var lists = RandomWordService.ListWordLists().ToList();
+            var lists = RandomWordService.ListWordLists()
+                .Select(name => new PromptSourceOption(name))
+                .Prepend(new PromptSourceOption(null))
+                .ToList();
             WordListSelectionControl.ItemsSource = lists;
             WordListSelectionControl.SetSelectedItems(
-                ResolveNameSelection(lists, Settings.Instance.SelectedWordLists, Settings.Instance.SelectedWordList));
+                ResolveSourceSelection(lists, Settings.Instance.SelectedWordLists, Settings.Instance.SelectedWordList));
 
             var savedCounts = Settings.Instance.RandomWordCounts.Count > 0
                 ? Settings.Instance.RandomWordCounts
@@ -572,16 +625,21 @@ namespace WallTrek.Views
 
         // Maps the saved multi-selection onto the names currently on disk, falling back to
         // the legacy single setting and finally the first entry so the pool is never empty.
-        private static List<object> ResolveNameSelection(List<string> available, List<string> saved, string legacySingle)
+        private static List<object> ResolveSourceSelection(List<PromptSourceOption> available, List<string> saved, string legacySingle)
         {
             var selected = available
-                .Where(n => saved.Contains(n, StringComparer.OrdinalIgnoreCase))
+                .Where(option => saved.Contains(option.SettingsValue, StringComparer.OrdinalIgnoreCase))
                 .Cast<object>()
                 .ToList();
 
             if (selected.Count == 0)
             {
-                var fallback = available.FirstOrDefault(n => string.Equals(n, legacySingle, StringComparison.OrdinalIgnoreCase))
+                // An empty saved list is the legacy/uninitialized state, so retain the old
+                // active file. An explicitly selected None is persisted as one empty entry.
+                var fallback = available.FirstOrDefault(option =>
+                                   option.Name != null
+                                   && string.Equals(option.Name, legacySingle, StringComparison.OrdinalIgnoreCase))
+                    ?? available.FirstOrDefault(option => option.Name != null)
                     ?? available.FirstOrDefault();
                 if (fallback != null)
                 {
@@ -599,12 +657,14 @@ namespace WallTrek.Views
         private void CategoryProfileSelectionControl_SelectionChanged(object? sender, EventArgs e)
         {
             if (_suppressProfileEvents) return;
-            var names = CategoryProfileSelectionControl.SelectedItems.Cast<string>().ToList();
-            Settings.Instance.SelectedCategoryProfiles = names;
+            var options = CategoryProfileSelectionControl.SelectedItems.Cast<PromptSourceOption>().ToList();
+            Settings.Instance.SelectedCategoryProfiles = options.Select(option => option.SettingsValue).ToList();
             // Keep the legacy single setting valid (used by the Settings editor and fallback paths).
-            if (names.Count > 0 && !names.Contains(Settings.Instance.SelectedCategoryProfile, StringComparer.OrdinalIgnoreCase))
+            var firstNamed = options.FirstOrDefault(option => option.Name != null)?.Name;
+            if (firstNamed != null
+                && !options.Any(option => string.Equals(option.Name, Settings.Instance.SelectedCategoryProfile, StringComparison.OrdinalIgnoreCase)))
             {
-                Settings.Instance.SelectedCategoryProfile = names[0];
+                Settings.Instance.SelectedCategoryProfile = firstNamed;
             }
             Settings.Instance.Save();
         }
@@ -612,13 +672,16 @@ namespace WallTrek.Views
         private void WordListSelectionControl_SelectionChanged(object? sender, EventArgs e)
         {
             if (_suppressProfileEvents) return;
-            var names = WordListSelectionControl.SelectedItems.Cast<string>().ToList();
-            Settings.Instance.SelectedWordLists = names;
-            if (names.Count > 0 && !names.Contains(Settings.Instance.SelectedWordList, StringComparer.OrdinalIgnoreCase))
+            var options = WordListSelectionControl.SelectedItems.Cast<PromptSourceOption>().ToList();
+            Settings.Instance.SelectedWordLists = options.Select(option => option.SettingsValue).ToList();
+            var firstNamed = options.FirstOrDefault(option => option.Name != null)?.Name;
+            if (firstNamed != null
+                && !options.Any(option => string.Equals(option.Name, Settings.Instance.SelectedWordList, StringComparison.OrdinalIgnoreCase)))
             {
-                Settings.Instance.SelectedWordList = names[0];
+                Settings.Instance.SelectedWordList = firstNamed;
             }
             Settings.Instance.Save();
+            UpdateCostEstimate();
         }
 
         private void WordCountSelectionControl_SelectionChanged(object? sender, EventArgs e)
@@ -631,6 +694,15 @@ namespace WallTrek.Views
                 Settings.Instance.RandomWordCount = counts[0];
             }
             Settings.Instance.Save();
+            UpdateCostEstimate();
+        }
+
+        private void IterativePromptCheckBox_Changed(object sender, RoutedEventArgs e)
+        {
+            if (_suppressProfileEvents) return;
+            Settings.Instance.IterativePromptGeneration = IterativePromptCheckBox.IsChecked == true;
+            Settings.Instance.Save();
+            UpdateCostEstimate();
         }
 
         private async void RandomImageButton_Click(SplitButton sender, SplitButtonClickEventArgs args)
@@ -663,13 +735,39 @@ namespace WallTrek.Views
             var imgSelected = ImageModelSelectionControl.SelectedItems.Cast<ImageModelOption>().ToList();
             var up = UpscalerSelectionComboBox.SelectedItem as UpscalerOption ?? UpscalerCatalog.Default;
 
-            decimal llmCents = llmSelected.Count > 0 ? llmSelected.Average(o => o.Cents) : LlmModelCatalog.Default.Cents;
+            decimal llmCentsPerCall = llmSelected.Count > 0 ? llmSelected.Average(o => o.Cents) : LlmModelCatalog.Default.Cents;
             decimal imgCents = imgSelected.Count > 0 ? imgSelected.Average(o => o.Cents) : ImageModelCatalog.Default.Cents;
+            decimal promptCalls = GetExpectedPromptCallCount();
+            decimal llmCents = llmCentsPerCall * promptCalls;
 
             decimal total = llmCents + imgCents + up.Cents;
 
             RandomImageButton.Content = $"Random Image  (~{total:0}¢)";
-            CostEstimateTextBlock.Text = $"≈ {llmCents:0.#}¢ prompt + {imgCents:0.#}¢ image + {up.Cents:0.#}¢ upscale";
+            var callDetail = promptCalls > 1m ? $" (~{promptCalls:0.#} calls)" : string.Empty;
+            CostEstimateTextBlock.Text = $"≈ {llmCents:0.#}¢ prompt{callDetail} + {imgCents:0.#}¢ image + {up.Cents:0.#}¢ upscale";
+        }
+
+        private decimal GetExpectedPromptCallCount()
+        {
+            if (IterativePromptCheckBox.IsChecked != true)
+            {
+                return 1m;
+            }
+
+            var counts = WordCountSelectionControl.SelectedItems.Cast<int>().ToList();
+            decimal averageWordCalls = counts.Count > 0
+                ? (decimal)counts.Average(count => Math.Max(1, count))
+                : Math.Max(1, Settings.Instance.RandomWordCount);
+
+            var wordLists = WordListSelectionControl.SelectedItems.Cast<PromptSourceOption>().ToList();
+            if (wordLists.Count == 0)
+            {
+                return averageWordCalls;
+            }
+
+            // A randomly selected None word list falls back to the normal one-call prompt.
+            var realListRatio = (decimal)wordLists.Count(option => option.Name != null) / wordLists.Count;
+            return 1m + (averageWordCalls - 1m) * realListRatio;
         }
 
         // Maps a batch menu item's Tag ("2"/"4"/"8"/"16"/"custom") to an image count.

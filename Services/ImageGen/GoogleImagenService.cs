@@ -11,7 +11,7 @@ namespace WallTrek.Services.ImageGen
         private readonly string imageSize;
         private readonly string aspectRatio;
         private readonly HttpClient httpClient;
-        private const string BaseUrl = "https://generativelanguage.googleapis.com/v1beta";
+        private const string BaseUrl = "https://generativelanguage.googleapis.com/v1";
 
         public GoogleImagenService(string apiKey, string model, string imageSize, string aspectRatio)
         {
@@ -24,7 +24,7 @@ namespace WallTrek.Services.ImageGen
 
         public async Task<ImageGenerationResult> GenerateImage(string prompt, CancellationToken cancellationToken = default)
         {
-            // Gemini image models (e.g. gemini-3-pro-image-preview) use the generateContent endpoint;
+            // Gemini image models (e.g. gemini-3.1-flash-image) use the generateContent endpoint;
             // Imagen models use the predict endpoint. The request and response shapes differ.
             return model.StartsWith("gemini", StringComparison.OrdinalIgnoreCase)
                 ? await GenerateWithGemini(prompt, cancellationToken)
@@ -104,10 +104,13 @@ namespace WallTrek.Services.ImageGen
                 generationConfig = new
                 {
                     responseModalities = new[] { "IMAGE" },
-                    imageConfig = new
+                    responseFormat = new
                     {
-                        aspectRatio = this.aspectRatio,
-                        imageSize = this.imageSize
+                        image = new
+                        {
+                            aspectRatio = this.aspectRatio,
+                            imageSize = this.imageSize
+                        }
                     }
                 }
             };

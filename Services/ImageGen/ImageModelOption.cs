@@ -13,7 +13,7 @@ namespace WallTrek.Services.ImageGen
     /// </summary>
     public class ImageModelOption
     {
-        /// <summary>Stable key persisted in settings, e.g. "gemini-3-pro-image-preview@4K".</summary>
+        /// <summary>Stable key persisted in settings, e.g. "gemini-3-pro-image@4K".</summary>
         public string Id { get; init; } = "";
 
         /// <summary>Which generation service handles this option.</summary>

@@ -35,10 +35,13 @@ namespace WallTrek.Services.TextGen
             {
                 Messages = messages,
                 Model = model,
-                MaxTokens = 1000,
-                System = new List<SystemMessage> { new SystemMessage(systemPrompt) },
-                Temperature = 0.7m
+                // Claude 5 enables adaptive thinking by default, and thinking tokens count
+                // against this ceiling. Leave enough room for its short visible response.
+                MaxTokens = IsClaude5 ? 4096 : 1000,
+                System = new List<SystemMessage> { new SystemMessage(systemPrompt) }
             };
+
+            ConfigureModelParameters(parameters);
 
             var result = await client.Messages.GetClaudeMessageAsync(parameters, cancellationToken);
 
@@ -89,6 +92,8 @@ namespace WallTrek.Services.TextGen
                 }
             };
 
+            ConfigureModelParameters(parameters);
+
             var result = await client.Messages.GetClaudeMessageAsync(parameters, cancellationToken);
 
             // Look for the tool use in the response
@@ -106,6 +111,29 @@ namespace WallTrek.Services.TextGen
             }
 
             return null;
+        }
+
+        private bool IsClaude5 =>
+            string.Equals(model, "claude-opus-5", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(model, "claude-sonnet-5", StringComparison.OrdinalIgnoreCase);
+
+        private void ConfigureModelParameters(MessageParameters parameters)
+        {
+            if (IsClaude5)
+            {
+                // Claude 5 defaults to adaptive thinking. Low effort fits WallTrek's short
+                // prompt/metadata tasks and keeps latency and token usage bounded.
+                parameters.OutputConfig = new OutputConfig { Effort = ThinkingEffort.low };
+                return;
+            }
+
+            // Claude Opus 4.7+ rejects non-default sampling parameters. Older models retain
+            // WallTrek's established 0.7 temperature.
+            if (!model.StartsWith("claude-opus-4-7", StringComparison.OrdinalIgnoreCase)
+                && !model.StartsWith("claude-opus-4-8", StringComparison.OrdinalIgnoreCase))
+            {
+                parameters.Temperature = 0.7m;
+            }
         }
     }
 }

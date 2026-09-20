@@ -52,7 +52,7 @@ dotnet.exe restore
 - **Services/ImageGen/IImageGenerationService**: Interface for image generation providers
 - **Services/ImageGen/ImageGenerationServiceFactory**: Factory for creating appropriate image generation service instances
 - **Services/ImageGen/OpenAiImageGenerator**: OpenAI GPT Image (gpt-image) generation implementation
-- **Services/ImageGen/GoogleImagenService**: Google image generation — Imagen via the predict endpoint and Gemini (gemini-3-pro-image-preview) via generateContent
+- **Services/ImageGen/GoogleImagenService**: Google image generation — current Nano Banana/Gemini image models via generateContent, with legacy Imagen predict support
 
 #### Text Generation Services
 - **Services/TextGen/ILlmService**: Interface for LLM providers

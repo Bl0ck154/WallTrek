@@ -6,10 +6,12 @@ namespace WallTrek.Services.VideoGen
     /// <summary>Which fal endpoint family the option drives (they take different input fields).</summary>
     public enum VideoEndpointKind
     {
-        /// <summary>fal-ai/pixverse/v5/transition — first_image_url + end_image_url.</summary>
+        /// <summary>fal-ai/pixverse/v6/transition — first_image_url + end_image_url.</summary>
         PixVerseTransition,
         /// <summary>fal-ai/kling-video/o1/image-to-video — start_image_url + end_image_url.</summary>
         KlingStartEnd,
+        /// <summary>fal-ai/kling-video/v3/pro/image-to-video — start/end frames with optional audio.</summary>
+        KlingV3StartEnd,
     }
 
     /// <summary>
@@ -19,12 +21,12 @@ namespace WallTrek.Services.VideoGen
     /// </summary>
     public class VideoModelOption
     {
-        /// <summary>Stable key, e.g. "pixverse-v5-transition@720p".</summary>
+        /// <summary>Stable key, e.g. "pixverse-v6-transition@720p".</summary>
         public string Id { get; init; } = "";
 
         public VideoEndpointKind Kind { get; init; }
 
-        /// <summary>fal endpoint id, e.g. "fal-ai/pixverse/v5/transition".</summary>
+        /// <summary>fal endpoint id, e.g. "fal-ai/pixverse/v6/transition".</summary>
         public string Endpoint { get; init; } = "";
 
         // --- Display columns ---

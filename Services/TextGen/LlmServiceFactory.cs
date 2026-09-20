@@ -6,6 +6,8 @@ namespace WallTrek.Services.TextGen
     {
         public static ILlmService CreateService(string model, string openAiApiKey, string anthropicApiKey, string googleApiKey)
         {
+            model = LlmModelCatalog.NormalizeId(model) ?? model;
+
             if (IsAnthropicModel(model))
             {
                 if (string.IsNullOrEmpty(anthropicApiKey))

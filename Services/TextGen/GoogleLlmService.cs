@@ -32,17 +32,24 @@ namespace WallTrek.Services.TextGen
 
         public async Task<string> GenerateTextAsync(string systemPrompt, string userPrompt, CancellationToken cancellationToken = default)
         {
-            var requestPayload = new
+            var requestPayload = new JsonObject
             {
-                system_instruction = new { parts = new[] { new { text = systemPrompt } } },
-                contents = new[]
+                ["system_instruction"] = new JsonObject
                 {
-                    new { role = "user", parts = new[] { new { text = userPrompt } } }
+                    ["parts"] = new JsonArray { new JsonObject { ["text"] = systemPrompt } }
                 },
-                generationConfig = new { temperature = 0.7 }
+                ["contents"] = new JsonArray
+                {
+                    new JsonObject
+                    {
+                        ["role"] = "user",
+                        ["parts"] = new JsonArray { new JsonObject { ["text"] = userPrompt } }
+                    }
+                },
+                ["generationConfig"] = CreateGenerationConfig()
             };
 
-            var responseText = await PostAsync(JsonSerializer.Serialize(requestPayload), cancellationToken);
+            var responseText = await PostAsync(requestPayload.ToJsonString(), cancellationToken);
             return ExtractText(responseText).Trim();
         }
 
@@ -58,6 +65,10 @@ namespace WallTrek.Services.TextGen
             // rejects JSON Schema artifacts like additionalProperties / $schema.
             var geminiSchema = ToGeminiSchema(schemaNode);
 
+            var generationConfig = CreateGenerationConfig();
+            generationConfig["responseMimeType"] = "application/json";
+            generationConfig["responseSchema"] = geminiSchema;
+
             var requestPayload = new JsonObject
             {
                 ["system_instruction"] = new JsonObject
@@ -72,12 +83,7 @@ namespace WallTrek.Services.TextGen
                         ["parts"] = new JsonArray { new JsonObject { ["text"] = userPrompt } }
                     }
                 },
-                ["generationConfig"] = new JsonObject
-                {
-                    ["temperature"] = 0.7,
-                    ["responseMimeType"] = "application/json",
-                    ["responseSchema"] = geminiSchema
-                }
+                ["generationConfig"] = generationConfig
             };
 
             var responseText = await PostAsync(requestPayload.ToJsonString(), cancellationToken);
@@ -92,6 +98,20 @@ namespace WallTrek.Services.TextGen
             {
                 PropertyNameCaseInsensitive = true
             });
+        }
+
+        private JsonObject CreateGenerationConfig()
+        {
+            var config = new JsonObject();
+
+            // Gemini 3.8 Flash and later-generation stable models deprecate sampling
+            // parameters. Keep the existing temperature for older picker entries.
+            if (!string.Equals(model, "gemini-3.8-flash", StringComparison.OrdinalIgnoreCase))
+            {
+                config["temperature"] = 0.7;
+            }
+
+            return config;
         }
 
         private async Task<string> PostAsync(string jsonContent, CancellationToken cancellationToken)
