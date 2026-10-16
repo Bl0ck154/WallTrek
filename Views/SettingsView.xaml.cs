@@ -1,6 +1,9 @@
 // SettingsView.xaml.cs
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Media.Imaging;
+using Windows.Storage.Streams;
+using WallTrek.Services.Providers;
 using System;
 using System.Diagnostics;
 using System.IO;
@@ -35,6 +38,235 @@ namespace WallTrek.Views
         public void ClearStatus()
         {
             StatusTextBlock.Text = "";
+        }
+
+        private sealed record ProfileChoice(Guid Id, string Label);
+        private Guid? _editingProviderId;
+        private bool _loadingProviderProfile;
+
+        private void RefreshProviderProfiles(Guid? select = null)
+        {
+            try
+            {
+                _loadingProviderProfile = true;
+                var profiles = ProviderProfileStore.Default.List();
+                ProviderProfileComboBox.ItemsSource = profiles
+                    .Select(p => new ProfileChoice(p.Id, p.Name + " — " + p.ImageModel)).ToList();
+                var match = profiles.FirstOrDefault(p => p.Id == select);
+                if (match != null)
+                {
+                    ProviderProfileComboBox.SelectedIndex = profiles.ToList().FindIndex(p => p.Id == match.Id);
+                    DisplayProfile(match);
+                }
+                else if (profiles.Count > 0)
+                {
+                    ProviderProfileComboBox.SelectedIndex = 0;
+                    DisplayProfile(profiles[0]);
+                }
+                else DisplayProfile(new ProviderProfile());
+            }
+            catch (Exception)
+            {
+                ProviderStatusTextBlock.Text = "Provider configuration could not be loaded. Check providers.json; no data was overwritten.";
+            }
+            finally { _loadingProviderProfile = false; }
+        }
+
+        private void DisplayProfile(ProviderProfile profile)
+        {
+            _editingProviderId = profile.Id;
+            ProviderNameBox.Text = profile.Name;
+            ProviderBaseUrlBox.Text = profile.BaseUrl;
+            ProviderImageModelBox.Text = profile.ImageModel;
+            ProviderEditModelBox.Text = profile.EditModel;
+            ProviderTextModelBox.Text = profile.TextModel;
+            ProviderGeneratePathBox.Text = profile.GeneratePath;
+            ProviderEditPathBox.Text = profile.EditPath;
+            ProviderModelsPathBox.Text = profile.ModelsPath;
+            ProviderLoopbackBox.IsChecked = profile.AllowLoopbackHttp;
+            ProviderEnabledBox.IsChecked = profile.Enabled;
+            ProviderEnableEditsBox.IsChecked = profile.EnableEdits;
+            ProviderAuthCombo.SelectedIndex = (int)profile.AuthMode;
+            ProviderEditShapeCombo.SelectedIndex = (int)profile.EditShape;
+            ProviderKeyBox.Password = "";
+            ProviderTestPreview.Source = null;
+            ProviderStatusTextBlock.Text =
+                $"Generation verified: {profile.GenerateVerified} ({profile.GenerateVerifiedAt?.ToString("u") ?? "never"}); " +
+                $"edit verified: {profile.EditVerified} ({profile.EditVerifiedAt?.ToString("u") ?? "never"}).";
+        }
+
+        private ProviderProfile CaptureProfile()
+        {
+            var profile = new ProviderProfile
+            {
+                Id = _editingProviderId ?? Guid.NewGuid(),
+                Name = ProviderNameBox.Text.Trim(),
+                BaseUrl = ProviderBaseUrlBox.Text.Trim(),
+                ImageModel = ProviderImageModelBox.Text.Trim(),
+                EditModel = ProviderEditModelBox.Text.Trim(),
+                TextModel = ProviderTextModelBox.Text.Trim(),
+                GeneratePath = ProviderGeneratePathBox.Text.Trim(),
+                EditPath = ProviderEditPathBox.Text.Trim(),
+                ModelsPath = ProviderModelsPathBox.Text.Trim(),
+                AllowLoopbackHttp = ProviderLoopbackBox.IsChecked == true,
+                Enabled = ProviderEnabledBox.IsChecked == true,
+                EnableEdits = ProviderEnableEditsBox.IsChecked == true,
+                AuthMode = (ProviderAuthMode)Math.Max(0, ProviderAuthCombo.SelectedIndex),
+                EditShape = (ProviderEditShape)Math.Max(0, ProviderEditShapeCombo.SelectedIndex)
+            };
+            ProviderProfileValidation.Validate(profile);
+            return profile;
+        }
+
+        private void ProviderProfileComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (_loadingProviderProfile || ProviderProfileComboBox.SelectedItem is not ProfileChoice choice) return;
+            var profile = ProviderProfileStore.Default.Find(choice.Id);
+            if (profile != null) DisplayProfile(profile);
+        }
+
+        private void ProviderNew_Click(object sender, RoutedEventArgs e)
+        {
+            ProviderProfileComboBox.SelectedIndex = -1;
+            DisplayProfile(new ProviderProfile());
+        }
+
+        private void ProviderDuplicate_Click(object sender, RoutedEventArgs e)
+        {
+            if (_editingProviderId is not Guid id) return;
+            var copy = ProviderProfileStore.Default.Find(id);
+            if (copy == null) return;
+            copy.Id = Guid.NewGuid();
+            copy.Name += " copy";
+            copy.GenerateVerified = false; copy.EditVerified = false;
+            copy.GenerateVerifiedAt = null; copy.EditVerifiedAt = null;
+            ProviderProfileComboBox.SelectedIndex = -1;
+            DisplayProfile(copy);
+            ProviderStatusTextBlock.Text = "Enter this new profile's API key; credentials are not copied.";
+        }
+
+        private void ProviderSave_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                var profile = CaptureProfile();
+                ProviderProfileStore.Default.Save(profile, ProviderKeyBox.Password);
+                RefreshProviderProfiles(profile.Id);
+                ProviderStatusTextBlock.Text = "Provider saved. Choose it in the image-model dropdown to use it.";
+            }
+            catch (ProviderException ex) { ProviderStatusTextBlock.Text = ex.Message; }
+            catch (Exception) { ProviderStatusTextBlock.Text = "Unable to save profile or encrypted credentials."; }
+        }
+
+        private async void ProviderDelete_Click(object sender, RoutedEventArgs e)
+        {
+            if (_editingProviderId is not Guid id || ProviderProfileStore.Default.Find(id) is null) return;
+            var dialog = new ContentDialog
+            {
+                Title = "Delete provider?",
+                Content = "Delete this profile and its saved API key? Existing image history remains untouched.",
+                PrimaryButtonText = "Delete",
+                CloseButtonText = "Cancel",
+                XamlRoot = XamlRoot
+            };
+            if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;
+            try
+            {
+                ProviderProfileStore.Default.Delete(id);
+                RefreshProviderProfiles();
+                ProviderStatusTextBlock.Text = "Provider and its key deleted.";
+            }
+            catch (Exception) { ProviderStatusTextBlock.Text = "Unable to delete provider safely."; }
+        }
+
+        private bool TryGetSavedProvider(out ProviderProfile? profile)
+        {
+            profile = _editingProviderId is Guid id ? ProviderProfileStore.Default.Find(id) : null;
+            if (profile == null) ProviderStatusTextBlock.Text = "Save the provider before testing it.";
+            return profile != null;
+        }
+
+        private async void ProviderTestConnection_Click(object sender, RoutedEventArgs e)
+        {
+            if (!TryGetSavedProvider(out var profile)) return;
+            ProviderStatusTextBlock.Text = "Checking configured models endpoint (no image generated)...";
+            try
+            {
+                var provider = ProviderRegistry.Create(profile!.Id);
+                var result = await provider.ProbeAsync();
+                ProviderStatusTextBlock.Text = result.Status +
+                    ". Generate and edit support are NOT established by this probe.";
+            }
+            catch (ProviderException ex) { ProviderStatusTextBlock.Text = ex.Message; }
+            catch (Exception) { ProviderStatusTextBlock.Text = "Connection test failed. No remote diagnostic text was logged."; }
+        }
+
+        private async void ProviderTestGenerate_Click(object sender, RoutedEventArgs e) =>
+            await RunProviderImageTestAsync(false);
+        private async void ProviderTestEdit_Click(object sender, RoutedEventArgs e) =>
+            await RunProviderImageTestAsync(true);
+
+        private async Task RunProviderImageTestAsync(bool edit)
+        {
+            if (!TryGetSavedProvider(out var profile)) return;
+            var origin = new Uri(profile!.BaseUrl).GetLeftPart(UriPartial.Authority);
+            if (edit && !profile.EnableEdits)
+            {
+                ProviderStatusTextBlock.Text = "Enable the edit endpoint and save before testing edits.";
+                return;
+            }
+            // Explicit consent for every test, especially uploading private reference images.
+            var confirm = new ContentDialog
+            {
+                XamlRoot = XamlRoot,
+                Title = edit ? "Upload reference photo?" : "Start paid image test?",
+                Content = edit
+                    ? $"The selected reference photo will be sent to {origin} using your saved API key. Continue?"
+                    : $"Test image generation at {origin}? Provider usage may be billed.",
+                PrimaryButtonText = "Run test", CloseButtonText = "Cancel"
+            };
+            if (await confirm.ShowAsync() != ContentDialogResult.Primary) return;
+            ProviderStatusTextBlock.Text = "Testing image endpoint; this may consume provider credits...";
+            try
+            {
+                ProviderImageReference[] refs = Array.Empty<ProviderImageReference>();
+                if (edit)
+                {
+                    var path = ProviderReferencePathBox.Text.Trim();
+                    if (!File.Exists(path)) { ProviderStatusTextBlock.Text = "Reference file does not exist."; return; }
+                    var length = new FileInfo(path).Length;
+                    if (length is < 16 or > 20 * 1024 * 1024)
+                    { ProviderStatusTextBlock.Text = "Reference exceeds 20 MiB or is empty."; return; }
+                    refs = new[] { new ProviderImageReference(await File.ReadAllBytesAsync(path),
+                        Path.GetFileName(path), ProviderReferenceRole.Identity) };
+                }
+                var provider = new OpenAiCompatibleProvider(profile,
+                    new WindowsProviderSecretStore());
+                var result = edit
+                    ? await provider.EditAsync(new ProviderImageRequest(ProviderTestPromptBox.Text, refs))
+                    : await provider.GenerateAsync(new ProviderImageRequest(ProviderTestPromptBox.Text));
+                using var stream = new InMemoryRandomAccessStream();
+                using (var writer = new DataWriter(stream))
+                {
+                    writer.WriteBytes(result.ImageData);
+                    await writer.StoreAsync();
+                    writer.DetachStream();
+                }
+                stream.Seek(0);
+                var bitmap = new BitmapImage();
+                await bitmap.SetSourceAsync(stream);
+                ProviderTestPreview.Source = bitmap;
+                ProviderProfileStore.Default.RecordVerified(profile.Id, edit, true);
+                ProviderStatusTextBlock.Text = $"Verified real {(edit ? "edit" : "generation")} " +
+                    $"image: {result.Width}×{result.Height} ({result.MimeType}). " +
+                    (edit ? "Inspect whether the person's identity was preserved." : "");
+            }
+            catch (ProviderException ex)
+            {
+                ProviderStatusTextBlock.Text = $"{ex.Reason}: {ex.Message}" +
+                    (ex.RetryAfter is null ? "" : $" Retry after {ex.RetryAfter.Value.TotalSeconds:0} seconds.");
+            }
+            catch (Exception) { ProviderStatusTextBlock.Text = "Test failed. Check provider configuration; no private error details are shown."; }
         }
 
         private void LoadSettingsToUI()
@@ -77,6 +309,7 @@ namespace WallTrek.Views
             // Load the file-based category profiles and word lists into their dropdowns/editors.
             PopulateCategoryProfiles();
             PopulateWordLists();
+            RefreshProviderProfiles();
         }
 
         private void SaveButton_Click(object sender, RoutedEventArgs e)
