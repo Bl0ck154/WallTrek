@@ -665,7 +665,14 @@ namespace WallTrek.Views
 
         // Re-reads the lists/selection (e.g., after returning from Settings, where profiles
         // and word lists may have been added, renamed, deleted, or re-selected).
-        public void RefreshProfileSelectors() => PopulateProfileSelectors();
+        public void RefreshProfileSelectors()
+        {
+            PopulateProfileSelectors();
+            // MainView survives Settings navigation: refresh image profiles without a restart.
+            ImageModelSelectionControl.ItemsSource = ImageModelCatalog.Options;
+            ImageModelSelectionControl.SetSelectedItems(ResolveImageSelection());
+            UpdateCostEstimate();
+        }
 
         private void CategoryProfileSelectionControl_SelectionChanged(object? sender, EventArgs e)
         {
