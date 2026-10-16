@@ -60,15 +60,26 @@ namespace WallTrek.Services.ImageGen
 
         // Query the profile registry when showing the dropdown; never hardcode supported hosts.
         public static IReadOnlyList<ImageModelOption> Options =>
-            BuiltinOptions.Concat(ProviderProfileStore.Default.List()
-                .Where(p => p.Enabled)
-                .Select(p => new ImageModelOption {
-                    Id = "custom:" + p.Id.ToString("N"),
-                    Provider = ImageProvider.CustomOpenAiCompatible,
-                    ModelId = p.ImageModel, Model = p.Name + " / " + p.ImageModel,
-                    Quality = "Provider default", Dimensions = "Provider default",
-                    Price = "Unknown", Cents = 0m
-                })).ToArray();
+            BuiltinOptions.Concat(ReadCustomOptions()).ToArray();
+
+        private static IEnumerable<ImageModelOption> ReadCustomOptions()
+        {
+            IReadOnlyList<ProviderProfile> profiles;
+            try { profiles = ProviderProfileStore.Default.List(); }
+            catch (Exception ex) when (ex is IOException or InvalidDataException or ProviderException)
+            {
+                // Damaged custom config must not break legacy OpenAI/Google startup.
+                return Array.Empty<ImageModelOption>();
+            }
+            return profiles.Where(p => p.Enabled).Select(p => new ImageModelOption
+            {
+                Id = "custom:" + p.Id.ToString("N"),
+                Provider = ImageProvider.CustomOpenAiCompatible,
+                ModelId = p.ImageModel, Model = p.Name + " / " + p.ImageModel,
+                Quality = "Provider default", Dimensions = "Provider default",
+                Price = "Unknown", Cents = 0m
+            }).ToArray();
+        }
 
         /// <summary>Default selection for fresh installs — good quality, low cost, native 16:9.</summary>
         public static ImageModelOption Default =>
