@@ -3,6 +3,8 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media.Imaging;
 using System.Text;
 using WallTrek.Services.Personalization;
+using WallTrek.Services.ImageGen.Codex;
+using Windows.Storage.Streams;
 using WallTrek.Services.Providers;
 using Windows.Storage.Pickers;
 
@@ -26,10 +28,14 @@ public sealed partial class PersonalizationEditor : UserControl
         _loading = true;
         PhotoList.ItemsSource = state.Photos;
         ScenarioList.ItemsSource = state.Scenarios;
-        DestinationProfiles.ItemsSource = ProviderProfileStore.Default.List()
+        var destinations = ProviderProfileStore.Default.List()
             .Where(p => p.Enabled && p.EnableEdits)
             .Select(p => new ProviderChoice(p.Id, p.Name + " → " +
-                new Uri(p.BaseUrl).GetLeftPart(UriPartial.Authority))).ToArray();
+                new Uri(p.BaseUrl).GetLeftPart(UriPartial.Authority))).ToList();
+        if (WallTrek.Services.Settings.Instance.CodexExperimentalEnabled)
+            destinations.Add(new ProviderChoice(CodexPersonalConsent.ProviderId,
+                "Codex experimental → " + CodexPersonalConsent.Origin));
+        DestinationProfiles.ItemsSource = destinations;
         var active = state.Scenarios.FirstOrDefault(s => s.Id == state.ActiveScenarioId);
         if (active != null)
         {
@@ -244,11 +250,43 @@ public sealed partial class PersonalizationEditor : UserControl
             EditorStatus.Text = "Select the destination provider first.";
             return;
         }
-        var profile = ProviderProfileStore.Default.Find(item.Id);
         var prepared = _library.Prepare();
-        if (profile is null || prepared is null || prepared.ReferenceIds.Count == 0)
+        if (prepared is null || prepared.ReferenceIds.Count == 0)
         {
             EditorStatus.Text = "Activate a scenario and select 1–5 enabled reference photos.";
+            return;
+        }
+        if (item.Id == CodexPersonalConsent.ProviderId)
+        {
+            if (!WallTrek.Services.Settings.Instance.CodexExperimentalEnabled)
+            {
+                EditorStatus.Text = "First enable Codex experimental mode in Settings.";
+                return;
+            }
+            var selected = _library.Snapshot().Photos.Where(p => prepared.ReferenceIds.Contains(p.Id)).ToArray();
+            var styleCount = selected.Count(p => p.Role == ReferenceRole.Style);
+            if (styleCount > 1 || styleCount == selected.Length)
+            {
+                EditorStatus.Text = "Codex requires 1–5 photos, at most one Style, and at least one Identity/Content photo.";
+                return;
+            }
+            if (ConfirmUpload.IsChecked != true)
+            {
+                EditorStatus.Text = "Review the experimental helper privacy notice and explicitly consent to ChatGPT/Codex photo upload.";
+                return;
+            }
+            _library.ApproveReferences(prepared.ScenarioId,
+                CodexPersonalConsent.ProviderId, CodexPersonalConsent.Origin, prepared.ReferenceIds);
+            ConfirmUpload.IsChecked = false;
+            EditorStatus.Text = "Approved these sanitized photos for " +
+                CodexPersonalConsent.Origin + " via the unofficial helper. " +
+                "Select Codex (experimental) as the image model on Main.";
+            return;
+        }
+        var profile = ProviderProfileStore.Default.Find(item.Id);
+        if (profile is null)
+        {
+            EditorStatus.Text = "The selected provider was removed.";
             return;
         }
         var origin = new Uri(profile.BaseUrl).GetLeftPart(UriPartial.Authority);
@@ -260,6 +298,79 @@ public sealed partial class PersonalizationEditor : UserControl
         _library.ApproveReferences(prepared.ScenarioId, profile.Id, origin, prepared.ReferenceIds);
         ConfirmUpload.IsChecked = false;
         EditorStatus.Text = $"Photos approved for {origin} only. Select this provider on the main screen.";
+    }
+
+    private async void ProbeCodex_Click(object sender, RoutedEventArgs e)
+    {
+        EditorStatus.Text = "Checking local Codex CLI and the unofficial image helper...";
+        try
+        {
+            var result = await CodexPersonalizedImageProvider.FromSettings().ProbeAsync();
+            EditorStatus.Text = result.Status +
+                " A successful CLI sign-in is not proof that image generation or edits are permitted.";
+        }
+        catch (CodexImageException ex) { EditorStatus.Text = ex.Message; }
+        catch (Exception) { EditorStatus.Text = "Codex availability check failed; do not assume image access."; }
+    }
+
+    private async void TestCodexEdit_Click(object sender, RoutedEventArgs e)
+    {
+        // This is a deliberate, potentially billed IMAGE operation, not a passive probe.
+        if (!WallTrek.Services.Settings.Instance.CodexExperimentalEnabled)
+        {
+            EditorStatus.Text = "Enable Codex experimental mode in Settings first.";
+            return;
+        }
+        var prepared = _library.Prepare();
+        if (prepared is null || prepared.ReferenceIds.Count == 0 ||
+            !_library.HasReferenceApproval(prepared,
+                CodexPersonalConsent.ProviderId, CodexPersonalConsent.Origin))
+        {
+            EditorStatus.Text = "First approve the exact selected photos for Codex/ChatGPT above.";
+            return;
+        }
+        if (DestinationProfiles.SelectedItem is not ProviderChoice item ||
+            item.Id != CodexPersonalConsent.ProviderId)
+        {
+            EditorStatus.Text = "Choose the Codex experimental destination before testing.";
+            return;
+        }
+        var testButton = sender as Button;
+        if (testButton is not null) testButton.IsEnabled = false;
+        EditorStatus.Text = "Performing a real Codex reference edit (account limits may apply)...";
+        try
+        {
+            var provider = CodexPersonalizedImageProvider.FromSettings();
+            var state = await provider.ProbeAsync();
+            if (!state.ConnectionOk)
+            {
+                EditorStatus.Text = state.Status;
+                return;
+            }
+            var images = _library.ReadForProvider(prepared.ReferenceIds);
+            var result = await provider.EditAsync(new ProviderImageRequest(prepared.FinalPrompt, images));
+            // Existing Windows BitmapImage path: require actual decodable PNG bytes.
+            using var stream = new InMemoryRandomAccessStream();
+            using (var writer = new DataWriter(stream))
+            {
+                writer.WriteBytes(result.ImageData);
+                await writer.StoreAsync();
+                writer.DetachStream();
+            }
+            stream.Seek(0);
+            var preview = new BitmapImage();
+            await preview.SetSourceAsync(stream);
+            CodexEditPreview.Source = preview;
+            EditorStatus.Text = $"Real experimental Codex EDIT returned a valid " +
+                $"{result.Width}×{result.Height} image. Review face fidelity visually. " +
+                "This confirms only this test, not future account eligibility.";
+        }
+        catch (CodexImageException ex) { EditorStatus.Text = $"{ex.Reason}: {ex.Message}"; }
+        catch (ProviderException ex) { EditorStatus.Text = $"{ex.Reason}: {ex.Message}"; }
+        catch (InvalidOperationException ex) { EditorStatus.Text = ex.Message; }
+        catch (Exception)
+        { EditorStatus.Text = "Codex reference edit failed. No image was saved or wallpaper changed."; }
+        finally { if (testButton is not null) testButton.IsEnabled = true; }
     }
 
     private async Task LoadHistoryAsync()
