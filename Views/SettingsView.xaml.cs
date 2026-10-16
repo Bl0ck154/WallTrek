@@ -10,6 +10,7 @@ using System.IO;
 using System.Linq;
 using System.Text.Json;
 using WallTrek.Services;
+using WallTrek.Services.ImageGen.Codex;
 using WallTrek.Services.Profiles;
 using WallTrek.Services.TextGen;
 using WallTrek.Utilities;
@@ -269,6 +270,80 @@ namespace WallTrek.Views
             catch (Exception) { ProviderStatusTextBlock.Text = "Test failed. Check provider configuration; no private error details are shown."; }
         }
 
+
+        private CodexImageBridge CreateCodexBridgeFromUi() => new(
+            CodexExperimentalCheckBox.IsChecked == true,
+            string.IsNullOrWhiteSpace(CodexExecutablePathTextBox.Text) ? null : CodexExecutablePathTextBox.Text.Trim(),
+            string.IsNullOrWhiteSpace(CodexHelperPathTextBox.Text) ? null : CodexHelperPathTextBox.Text.Trim());
+
+        private async void CodexProbeButton_Click(object sender, RoutedEventArgs e)
+        {
+            CodexProbeResultTextBlock.Text = "Checking local Codex...";
+            try
+            {
+                var result = await CreateCodexBridgeFromUi().ProbeAsync();
+                CodexProbeResultTextBlock.Text =
+                    $"Codex installed: {result.CodexInstalled}; signed in: {result.SignedIn}; " +
+                    $"helper installed: {result.HelperInstalled}; " +
+                    $"Codex CLI: {result.CodexVersion ?? "unknown"}; helper: {result.HelperVersion ?? "unknown"}. " +
+                    $"{(result.Problem is null ? "All prerequisites detected." : "Issue: " + result.Problem + ".")} " +
+                    result.ImageCapability;
+            }
+            catch (CodexImageException ex) { CodexProbeResultTextBlock.Text = ex.Message; }
+        }
+
+        private async void CodexGenerateTestButton_Click(object sender, RoutedEventArgs e) =>
+            await RunCodexImageTestAsync(edit: false);
+
+        private async void CodexEditTestButton_Click(object sender, RoutedEventArgs e) =>
+            await RunCodexImageTestAsync(edit: true);
+
+        private async Task RunCodexImageTestAsync(bool edit)
+        {
+            if (CodexExperimentalCheckBox.IsChecked != true)
+            {
+                CodexProbeResultTextBlock.Text = "Opt in to the experimental backend first.";
+                return;
+            }
+            if (edit && string.IsNullOrWhiteSpace(CodexReferencePathTextBox.Text))
+            {
+                CodexProbeResultTextBlock.Text = "Select a local reference photo path for the edit test.";
+                return;
+            }
+            CodexProbeResultTextBlock.Text = edit ? "Testing actual edit..." : "Testing actual generation...";
+            try
+            {
+                var refs = edit
+                    ? new[] { new CodexReference(CodexReferencePathTextBox.Text.Trim(), CodexReferenceRole.Identity) }
+                    : Array.Empty<CodexReference>();
+                var prompt = edit
+                    ? "Create a tasteful landscape wallpaper featuring the recognizable subject, preserve their identity and proportions."
+                    : "A peaceful mountain lake at sunrise, photographic landscape wallpaper, no text.";
+                var output = await CreateCodexBridgeFromUi().GenerateAsync(new CodexImageRequest(prompt, refs));
+                // Show the real validated bytes for human visual inspection, never publish them.
+                using (var stream = new InMemoryRandomAccessStream())
+                {
+                    using (var writer = new DataWriter(stream))
+                    {
+                        writer.WriteBytes(output.Png);
+                        await writer.StoreAsync();
+                        writer.DetachStream();
+                    }
+                    stream.Seek(0);
+                    var bitmap = new BitmapImage();
+                    await bitmap.SetSourceAsync(stream);
+                    CodexTestPreview.Source = bitmap;
+                }
+                CodexProbeResultTextBlock.Text =
+                    $"Validated {output.Width}×{output.Height} PNG from the experimental helper " +
+                    $"(v{output.HelperVersion ?? "unknown"}). " +
+                    (edit ? "Edit operation completed; inspect visual identity separately." : "Generation operation completed.");
+            }
+            catch (CodexImageException ex) { CodexProbeResultTextBlock.Text = $"{ex.Reason}: {ex.Message}"; }
+            catch (ArgumentException) { CodexProbeResultTextBlock.Text = "Invalid prompt or reference path."; }
+            catch (IOException) { CodexProbeResultTextBlock.Text = "A local reference or temporary file could not be accessed."; }
+        }
+
         private void LoadSettingsToUI()
         {
             var settings = Settings.Instance;
@@ -277,6 +352,9 @@ namespace WallTrek.Views
             GoogleApiKeyTextBox.Text = settings.GoogleApiKey ?? string.Empty;
             StabilityApiKeyTextBox.Text = settings.StabilityApiKey ?? string.Empty;
             FalApiKeyTextBox.Text = settings.FalApiKey ?? string.Empty;
+            CodexExperimentalCheckBox.IsChecked = settings.CodexExperimentalEnabled;
+            CodexExecutablePathTextBox.Text = settings.CodexExecutablePath ?? string.Empty;
+            CodexHelperPathTextBox.Text = settings.CodexHelperPath ?? string.Empty;
             DeviantArtClientIdTextBox.Text = settings.DeviantArtClientId ?? string.Empty;
             DeviantArtClientSecretPasswordBox.Password = settings.DeviantArtClientSecret ?? string.Empty;
             OutputDirectoryTextBox.Text = settings.OutputDirectory;
@@ -341,6 +419,11 @@ namespace WallTrek.Views
             settings.GoogleApiKey = GoogleApiKeyTextBox.Text;
             settings.StabilityApiKey = StabilityApiKeyTextBox.Text;
             settings.FalApiKey = FalApiKeyTextBox.Text;
+            settings.CodexExperimentalEnabled = CodexExperimentalCheckBox.IsChecked == true;
+            settings.CodexExecutablePath = string.IsNullOrWhiteSpace(CodexExecutablePathTextBox.Text)
+                ? null : CodexExecutablePathTextBox.Text.Trim();
+            settings.CodexHelperPath = string.IsNullOrWhiteSpace(CodexHelperPathTextBox.Text)
+                ? null : CodexHelperPathTextBox.Text.Trim();
             settings.DeviantArtClientId = DeviantArtClientIdTextBox.Text;
             settings.DeviantArtClientSecret = DeviantArtClientSecretPasswordBox.Password;
             settings.OutputDirectory = OutputDirectoryTextBox.Text;

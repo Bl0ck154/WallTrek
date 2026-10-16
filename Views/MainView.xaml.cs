@@ -349,6 +349,20 @@ namespace WallTrek.Views
                 };
             }
 
+
+            // A manually entered Codex prompt needs no separate paid text-model API key.
+            // Keep the upstream title/tag generator unchanged for existing providers.
+            if (prepared is null && _currentPromptGenerationResult == null && selectedOption.Provider == ImageProvider.CodexExperimental)
+            {
+                _currentPromptGenerationResult = new PromptGenerationResult
+                {
+                    Prompt = PromptTextBox.Text,
+                    Title = "Codex Wallpaper",
+                    Tags = Array.Empty<string>(),
+                    LlmModelId = "codex-only"
+                };
+            }
+
             // If we don't have a cached prompt generation result (e.g., user typed their own prompt),
             // generate title and tags from the prompt
             if (prepared is null && _currentPromptGenerationResult == null)
@@ -837,13 +851,13 @@ namespace WallTrek.Views
 
             decimal total = llmCents + imgCents + up.Cents;
 
-            bool unknownImagePrice = imgSelected.Any(o => o.Provider == ImageProvider.CustomOpenAiCompatible);
+            bool unknownImagePrice = imgSelected.Any(o => o.Provider is ImageProvider.CustomOpenAiCompatible or ImageProvider.CodexExperimental);
             RandomImageButton.Content = unknownImagePrice
-                ? "Random Image (image price unknown)"
+                ? "Random Image (provider quota / image price unknown)"
                 : $"Random Image  (~{total:0}¢)";
             var callDetail = promptCalls > 1m ? $" (~{promptCalls:0.#} calls)" : string.Empty;
             CostEstimateTextBlock.Text = unknownImagePrice
-                ? $"≈ {llmCents:0.#}¢ prompt{callDetail} + unknown image price + {up.Cents:0.#}¢ upscale"
+                ? $"≈ {llmCents:0.#}¢ prompt{callDetail} + unknown provider image cost / account quota + {up.Cents:0.#}¢ upscale"
                 : $"≈ {llmCents:0.#}¢ prompt{callDetail} + {imgCents:0.#}¢ image + {up.Cents:0.#}¢ upscale";
         }
 

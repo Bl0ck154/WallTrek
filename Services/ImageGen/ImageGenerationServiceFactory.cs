@@ -1,5 +1,6 @@
 using WallTrek.Services;
 using WallTrek.Services.Providers;
+using WallTrek.Services.ImageGen.Codex;
 
 namespace WallTrek.Services.ImageGen
 {
@@ -28,6 +29,11 @@ namespace WallTrek.Services.ImageGen
                         !Guid.TryParseExact(option.Id.AsSpan(7), "N", out var profileId))
                         throw new ProviderException(ProviderFailure.InvalidConfiguration);
                     return new CustomImageGenerationService(ProviderRegistry.Create(profileId));
+
+                case ImageProvider.CodexExperimental:
+                    if (!settings.CodexExperimentalEnabled)
+                        throw new InvalidOperationException("Enable the experimental Codex image backend in Settings first.");
+                    return new CodexExperimentalImageGenerator();
 
                 default:
                     throw new ArgumentException($"Unsupported image provider: {option.Provider}");

@@ -81,6 +81,10 @@ namespace WallTrek.Services
         public string? StabilityApiKey { get; set; }
         public string? FalApiKey { get; set; }
         public int RandomWordCount { get; set; } = 0;
+        // Opt-in only. No tokens/credentials are stored by WallTrek.
+        public bool CodexExperimentalEnabled { get; set; }
+        public string? CodexExecutablePath { get; set; }
+        public string? CodexHelperPath { get; set; }
     }
 
     public class Settings
@@ -328,6 +332,25 @@ namespace WallTrek.Services
             _model.FalApiKey = null; _model.DeviantArtClientSecret = null;
             _model.DeviantArtAccessToken = null; _model.DeviantArtRefreshToken = null;
             return true;
+        }
+
+
+        public bool CodexExperimentalEnabled
+        {
+            get => _model.CodexExperimentalEnabled;
+            set => _model.CodexExperimentalEnabled = value;
+        }
+
+        public string? CodexExecutablePath
+        {
+            get => _model.CodexExecutablePath;
+            set => _model.CodexExecutablePath = value;
+        }
+
+        public string? CodexHelperPath
+        {
+            get => _model.CodexHelperPath;
+            set => _model.CodexHelperPath = value;
         }
 
         public void Save()

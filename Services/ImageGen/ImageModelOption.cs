@@ -4,7 +4,8 @@ namespace WallTrek.Services.ImageGen
     {
         OpenAI,
         Google,
-        CustomOpenAiCompatible
+        CustomOpenAiCompatible,
+        CodexExperimental
     }
 
     /// <summary>

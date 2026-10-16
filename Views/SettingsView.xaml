@@ -100,6 +100,30 @@
                             <TextBox x:Name="FalApiKeyTextBox" PlaceholderText="Enter your fal.ai API key (used for video generation)" Width="400" HorizontalAlignment="Left"/>
                         </StackPanel>
 
+                        <!-- Codex is NOT a public image API. A separate, user-installed helper reads local Codex auth. -->
+                        <StackPanel Spacing="8">
+                            <TextBlock Text="Codex image generation (experimental)" FontWeight="SemiBold" />
+                            <TextBlock TextWrapping="Wrap" MaxWidth="600"
+                                       Text="Unofficial, unsupported backend. A separately installed codex-imagegen helper reads your local Codex credentials and sends prompts/photos to ChatGPT. Account limits and terms apply. No tokens are copied into WallTrek." />
+                            <CheckBox x:Name="CodexExperimentalCheckBox"
+                                      Content="I understand the risks and opt in to experimental Codex image generation" />
+                            <TextBox x:Name="CodexExecutablePathTextBox" Header="Codex executable (optional; auto-detect from PATH)"
+                                     PlaceholderText="codex.exe or codex.cmd absolute path" MaxWidth="600" HorizontalAlignment="Left" />
+                            <TextBox x:Name="CodexHelperPathTextBox" Header="Helper executable (optional; auto-detect from PATH)"
+                                     PlaceholderText="codex-imagegen.exe absolute path" MaxWidth="600" HorizontalAlignment="Left" />
+                            <Button Content="Check Codex login and helper" Click="CodexProbeButton_Click" HorizontalAlignment="Left" />
+                            <TextBox x:Name="CodexReferencePathTextBox" Header="Optional reference for separate edit test (not saved)"
+                                     PlaceholderText="Full path to a photo you consent to upload to ChatGPT" MaxWidth="600" HorizontalAlignment="Left" />
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <Button Content="Test real generation (uses quota)" Click="CodexGenerateTestButton_Click" />
+                                <Button Content="Test real edit (uploads reference; uses quota)" Click="CodexEditTestButton_Click" />
+                            </StackPanel>
+                            <Image x:Name="CodexTestPreview" MaxWidth="540" Height="260"
+                                   Stretch="Uniform" HorizontalAlignment="Left" />
+                            <TextBlock x:Name="CodexProbeResultTextBlock" TextWrapping="Wrap" MaxWidth="600"
+                                       Text="Login status does not prove image-generation availability. Only successful real tests verify this helper/account combination." />
+                        </StackPanel>
+
                         <StackPanel Spacing="10">
                             <TextBlock Text="DeviantArt API Settings:" FontWeight="SemiBold"/>
                             <StackPanel Spacing="8">
