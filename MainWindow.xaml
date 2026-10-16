@@ -15,12 +15,18 @@
 
     <Grid>
         <Grid.RowDefinitions>
-            <RowDefinition Height="48"/>
+            <RowDefinition Height="40"/>
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
 
         <!-- Custom Title Bar Drag Region -->
-        <Grid x:Name="AppTitleBar" Grid.Row="0" Background="Transparent"/>
+        <Grid x:Name="AppTitleBar" Grid.Row="0" Background="Transparent">
+            <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="24,0,0,0" Spacing="8">
+                <TextBlock Text="W" FontSize="15" FontWeight="Bold"/>
+                <TextBlock Text="WallTrek" FontSize="12" FontWeight="SemiBold"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" VerticalAlignment="Center"/>
+            </StackPanel>
+        </Grid>
 
         <!-- Content Area -->
         <views:MainView x:Name="MainViewControl" Grid.Row="1"

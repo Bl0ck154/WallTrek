@@ -1,34 +1,55 @@
-name: Portable Windows test build
+name: Windows installer test build
 on:
+  pull_request:
+    paths:
+      - "Views/MainView.xaml"
+      - "MainWindow.xaml"
+      - "installer/**"
+      - ".github/workflows/windows-portable-test-build.yml"
   workflow_dispatch:
 permissions:
   contents: read
 concurrency:
-  group: walltrek-portable-manual
+  group: walltrek-installer-check
   cancel-in-progress: false
 jobs:
   package:
     runs-on: windows-latest
-    timeout-minutes: 30
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 10.0.x
-      - name: Publish portable WinUI x64
+      - name: Publish WinUI x64 with local runtimes
         shell: pwsh
         run: |
           dotnet publish WallTrek.csproj -c Release -r win-x64 --self-contained true -p:PublishReadyToRun=false -p:PublishTrimmed=false -p:WindowsAppSDKSelfContained=true -o dist/WallTrek
           if ($LASTEXITCODE -ne 0) { throw "Publish failed" }
           if (-not (Test-Path dist/WallTrek/WallTrek.exe)) { throw "Missing WallTrek.exe" }
-          "Commit: $env:GITHUB_SHA" | Set-Content -Path dist/WallTrek/BUILD_INFO.txt
-          "Experimental Codex requires a reviewed, separately installed local image helper." | Add-Content -Path dist/WallTrek/BUILD_INFO.txt
-          ((Get-FileHash dist/WallTrek/WallTrek.exe -Algorithm SHA256).Hash + "  WallTrek.exe") | Set-Content -Path dist/WallTrek/SHA256.txt
-      - name: Upload portable test bundle
+          "Commit: $env:GITHUB_SHA" | Set-Content dist/WallTrek/BUILD_INFO.txt
+          $count = (Get-ChildItem dist/WallTrek -File -Recurse | Measure-Object).Count
+          $total = (Get-ChildItem dist/WallTrek -File -Recurse | Measure-Object Length -Sum).Sum
+          Write-Host "Bundled runtime: $count files, $([math]::Round($total/1MB,1)) MiB"
+      - name: Compile single-file Windows installer
+        shell: pwsh
+        run: |
+          $pfx = [Environment]::GetFolderPath([Environment+SpecialFolder]::ProgramFilesX86)
+          $compiler = Join-Path $pfx "Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $compiler)) {
+            choco install innosetup --no-progress -y --limit-output
+            if ($LASTEXITCODE -ne 0) { throw "Inno Setup installation failed" }
+          }
+          if (-not (Test-Path $compiler)) { throw "Inno Setup compiler missing" }
+          & $compiler installer\WallTrek.iss
+          if ($LASTEXITCODE -ne 0) { throw "Inno Setup packaging failed" }
+          if (-not (Test-Path dist/installer/WallTrek-Windows-x64-Setup.exe)) { throw "Installer missing" }
+          Get-FileHash dist/installer/WallTrek-Windows-x64-Setup.exe -Algorithm SHA256
+      - name: Upload installable EXE
         uses: actions/upload-artifact@v4
         with:
-          name: WallTrek-Windows-x64-portable-test
-          path: dist/WallTrek/
+          name: WallTrek-Windows-x64-Installer-test
+          path: dist/installer/WallTrek-Windows-x64-Setup.exe
           if-no-files-found: error
           retention-days: 7
-          compression-level: 6
+          compression-level: 0
