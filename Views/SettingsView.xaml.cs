@@ -4,6 +4,7 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media.Imaging;
 using Windows.Storage.Streams;
 using WallTrek.Services.Providers;
+using WallTrek.Services.Scheduling;
 using System;
 using System.Diagnostics;
 using System.IO;
@@ -44,6 +45,45 @@ namespace WallTrek.Views
         private sealed record ProfileChoice(Guid Id, string Label);
         private Guid? _editingProviderId;
         private bool _loadingProviderProfile;
+        private sealed record ZoneChoice(string Id, string Label);
+        private bool _loadingScheduleControls;
+
+        private void PopulateScheduleZones()
+        {
+            _loadingScheduleControls = true;
+            try
+            {
+                var localId = TimeZoneInfo.Local.Id;
+                var zones = new[] { new ZoneChoice("Local", "Follow Windows local time zone (" +
+                    localId + ")") }.Concat(TimeZoneInfo.GetSystemTimeZones()
+                    .Select(z => new ZoneChoice(z.Id, z.DisplayName)))
+                    .ToList();
+                DailyTimeZoneComboBox.ItemsSource = zones;
+                var id = Settings.Instance.DailyAutoGenerateTimeZone;
+                var chosen = zones.FirstOrDefault(z => z.Id == id);
+                DailyTimeZoneComboBox.SelectedItem = chosen ?? zones[0];
+                var parsed = DailyWallClock.ParseTime(Settings.Instance.DailyAutoGenerateTime);
+                DailyScheduleTimePicker.Time = parsed;
+                var daily = Settings.Instance.AutoGenerateMode == "daily";
+                AutoScheduleModeComboBox.SelectedIndex = daily ? 1 : 0;
+                UpdateScheduleModeVisibility();
+            }
+            finally { _loadingScheduleControls = false; }
+        }
+
+        private void AutoScheduleMode_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (!_loadingScheduleControls && DailySchedulePanel is not null)
+                UpdateScheduleModeVisibility();
+        }
+
+        private void UpdateScheduleModeVisibility()
+        {
+            var daily = (AutoScheduleModeComboBox.SelectedItem as ComboBoxItem)?
+                .Tag?.ToString() == "daily";
+            DailySchedulePanel.Visibility = daily ? Visibility.Visible : Visibility.Collapsed;
+            IntervalSchedulePanel.Visibility = daily ? Visibility.Collapsed : Visibility.Visible;
+        }
 
         private void RefreshProviderProfiles(Guid? select = null)
         {
@@ -360,6 +400,7 @@ namespace WallTrek.Views
             OutputDirectoryTextBox.Text = settings.OutputDirectory;
             AutoGenerateCheckBox.IsChecked = settings.AutoGenerateEnabled;
             AutoGenerateHoursNumberBox.Value = settings.AutoGenerateHours > 0 ? settings.AutoGenerateHours : 6.0;
+            PopulateScheduleZones();
             MinimizeToTrayCheckBox.IsChecked = settings.MinimizeToTray;
 
             // Set auto-generate source dropdown
@@ -413,6 +454,45 @@ namespace WallTrek.Views
 
             var settings = Settings.Instance;
             var previousHours = settings.AutoGenerateHours;
+            var previousMode = settings.AutoGenerateMode;
+            var previousEnabled = settings.AutoGenerateEnabled;
+            var previousDailyTime = settings.DailyAutoGenerateTime;
+            var previousDailyZone = settings.DailyAutoGenerateTimeZone;
+            var newMode = (AutoScheduleModeComboBox.SelectedItem as ComboBoxItem)?
+                .Tag?.ToString() == "daily" ? "daily" : "interval";
+            var selectedZone = (DailyTimeZoneComboBox.SelectedItem as ZoneChoice)?.Id ?? "Local";
+            var timeText = DailyScheduleTimePicker.Time.ToString(@"hh\:mm");
+            try
+            {
+                if (newMode == "daily")
+                {
+                    _ = DailyWallClock.ParseTime(timeText);
+                    _ = DailyWallClock.ResolveZone(selectedZone);
+                }
+            }
+            catch (Exception)
+            {
+                ShowStatus("Choose a valid daily time and time zone.", Microsoft.UI.Colors.Red);
+                return;
+            }
+            if (AutoGenerateCheckBox.IsChecked == true && newMode == "daily" &&
+                RunOnStartupCheckBox.IsChecked != true)
+            {
+                ShowStatus("Daily mode requires Run on Windows Startup. Enable it and save again.",
+                    Microsoft.UI.Colors.Red);
+                return;
+            }
+            var runOnStartup = RunOnStartupCheckBox.IsChecked == true;
+            // Verify actual HKCU Run registration BEFORE changing settings in memory
+            // or persisting an allegedly durable daily schedule.
+            StartupManager.SetStartupEnabled(runOnStartup);
+            if (runOnStartup && !StartupManager.IsStartupEnabled() &&
+                AutoGenerateCheckBox.IsChecked == true && newMode == "daily")
+            {
+                ShowStatus("Windows startup registration failed; daily schedule was NOT saved.",
+                    Microsoft.UI.Colors.Red);
+                return;
+            }
 
             settings.ApiKey = ApiKeyTextBox.Text;
             settings.AnthropicApiKey = AnthropicApiKeyTextBox.Text;
@@ -429,6 +509,15 @@ namespace WallTrek.Views
             settings.OutputDirectory = OutputDirectoryTextBox.Text;
             settings.AutoGenerateEnabled = AutoGenerateCheckBox.IsChecked ?? false;
             settings.AutoGenerateHours = AutoGenerateHoursNumberBox.Value;
+            settings.AutoGenerateMode = newMode;
+            settings.DailyAutoGenerateTime = timeText;
+            settings.DailyAutoGenerateTimeZone = selectedZone;
+            if (settings.AutoGenerateEnabled && newMode == "daily" &&
+                (!previousEnabled || previousMode != "daily" ||
+                 settings.DailyAutoGenerateEnabledAtUtc is null ||
+                 previousDailyTime != timeText ||
+                 previousDailyZone != selectedZone))
+                settings.DailyAutoGenerateEnabledAtUtc = DateTimeOffset.UtcNow;
             settings.MinimizeToTray = MinimizeToTrayCheckBox.IsChecked ?? true;
 
             // Save auto-generate source
@@ -439,15 +528,13 @@ namespace WallTrek.Views
 
             // Random word count is set on the main page now (0 = off), not here.
 
-            // Handle startup setting - only update registry, no need to store in settings
-            var runOnStartup = RunOnStartupCheckBox.IsChecked ?? false;
-            StartupManager.SetStartupEnabled(runOnStartup);
-
+            // HKCU Run was registered/validated before mutating the active settings.
             settings.Save();
 
             // Refresh auto-generate service based on new settings
-            if (settings.AutoGenerateEnabled && settings.AutoGenerateHours > 0 &&
-                Math.Abs(previousHours - settings.AutoGenerateHours) > 0.001)
+            if (settings.AutoGenerateEnabled && newMode == "interval" &&
+                (previousMode != "interval" ||
+                 Math.Abs(previousHours - settings.AutoGenerateHours) > 0.001))
             {
                 AutoGenerateService.Instance.Start(settings.AutoGenerateHours);
             }

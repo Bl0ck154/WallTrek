@@ -16,6 +16,13 @@ namespace WallTrek.Services
         public double Hours { get; set; } = 6.0;
         public DateTime? NextGenerateTime { get; set; }
         public string Source { get; set; } = "current";
+        // Backward-compatible default preserves existing hourly interval behavior.
+        public string Mode { get; set; } = "interval";
+        public string DailyLocalTime { get; set; } = "09:00";
+        // "Local" follows Windows timezone updates; alternatively a Windows/IANA zone ID.
+        public string DailyTimeZoneId { get; set; } = "Local";
+        // Prevent a freshly enabled schedule from backfilling a time before user opted in.
+        public DateTimeOffset? DailyEnabledAtUtc { get; set; }
     }
 
     public class DefaultRandomPrompts : Dictionary<string, string[]>
@@ -127,6 +134,29 @@ namespace WallTrek.Services
         {
             get => _model.AutoGenerate.Hours;
             set => _model.AutoGenerate.Hours = value;
+        }
+        public string AutoGenerateMode
+        {
+            get => _model.AutoGenerate.Mode;
+            set => _model.AutoGenerate.Mode = value;
+        }
+
+        public string DailyAutoGenerateTime
+        {
+            get => _model.AutoGenerate.DailyLocalTime;
+            set => _model.AutoGenerate.DailyLocalTime = value;
+        }
+
+        public string DailyAutoGenerateTimeZone
+        {
+            get => _model.AutoGenerate.DailyTimeZoneId;
+            set => _model.AutoGenerate.DailyTimeZoneId = value;
+        }
+
+        public DateTimeOffset? DailyAutoGenerateEnabledAtUtc
+        {
+            get => _model.AutoGenerate.DailyEnabledAtUtc;
+            set => _model.AutoGenerate.DailyEnabledAtUtc = value;
         }
 
         public DateTime? NextAutoGenerateTime

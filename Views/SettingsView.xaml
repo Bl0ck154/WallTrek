@@ -47,14 +47,36 @@
 
                         <StackPanel Spacing="10">
                             <CheckBox x:Name="AutoGenerateCheckBox" Content="Auto-generate wallpapers" VerticalAlignment="Center" Checked="AutoGenerateCheckBox_CheckChanged" Unchecked="AutoGenerateCheckBox_CheckChanged"/>
-                            <StackPanel x:Name="AutoGenerateOptionsPanel" Orientation="Horizontal" Spacing="10" Visibility="Collapsed">
-                                <TextBlock Text="Every" VerticalAlignment="Center"/>
-                                <NumberBox x:Name="AutoGenerateHoursNumberBox" Value="6" Minimum="0.01" Maximum="10000" Width="100" VerticalAlignment="Center" SmallChange="0.5" LargeChange="1"/>
-                                <TextBlock Text="hours using" VerticalAlignment="Center"/>
-                                <ComboBox x:Name="AutoGenerateSourceComboBox" Width="160" VerticalAlignment="Center">
-                                    <ComboBoxItem Content="Current prompt" Tag="current"/>
-                                    <ComboBoxItem Content="Random prompt" Tag="random"/>
+                            <StackPanel x:Name="AutoGenerateOptionsPanel" Orientation="Vertical" Spacing="10" Visibility="Collapsed">
+                                <ComboBox x:Name="AutoScheduleModeComboBox" Header="Schedule mode"
+                                          SelectionChanged="AutoScheduleMode_SelectionChanged" Width="270" HorizontalAlignment="Left">
+                                    <ComboBoxItem Content="Every N hours (existing mode)" Tag="interval"/>
+                                    <ComboBoxItem Content="Daily at chosen clock time" Tag="daily"/>
                                 </ComboBox>
+                                <StackPanel x:Name="IntervalSchedulePanel" Orientation="Horizontal" Spacing="10">
+                                    <TextBlock Text="Every" VerticalAlignment="Center"/>
+                                    <NumberBox x:Name="AutoGenerateHoursNumberBox" Value="6" Minimum="0.01"
+                                               Maximum="10000" Width="100" VerticalAlignment="Center"
+                                               SmallChange="0.5" LargeChange="1"/>
+                                    <TextBlock Text="hours" VerticalAlignment="Center"/>
+                                </StackPanel>
+                                <StackPanel x:Name="DailySchedulePanel" Visibility="Collapsed" Spacing="8">
+                                    <TimePicker x:Name="DailyScheduleTimePicker" Header="Daily wallpaper time"
+                                                ClockIdentifier="24HourClock" HorizontalAlignment="Left"/>
+                                    <ComboBox x:Name="DailyTimeZoneComboBox" Header="Time zone"
+                                              DisplayMemberPath="Label" Width="490" HorizontalAlignment="Left"/>
+                                    <TextBlock TextWrapping="Wrap" MaxWidth="580"
+                                               Text="WallTrek starts with your Windows sign-in, runs in the tray, and catches up after sleep or a missed run. Windows must be signed in; a sleeping/off PC will not be woken. During daylight-saving transitions, skipped times move to the first valid minute, and repeated times run once."/>
+                                    <TextBlock TextWrapping="Wrap" MaxWidth="580"
+                                               Text="Daily mode requires Run on Windows Startup below. A crashed in-flight AI request is not repeated automatically because its billing/outcome may be unknown."/>
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal" Spacing="10">
+                                    <TextBlock Text="Use" VerticalAlignment="Center"/>
+                                    <ComboBox x:Name="AutoGenerateSourceComboBox" Width="170">
+                                        <ComboBoxItem Content="Current prompt" Tag="current"/>
+                                        <ComboBoxItem Content="Random prompt" Tag="random"/>
+                                    </ComboBox>
+                                </StackPanel>
                             </StackPanel>
                         </StackPanel>
 

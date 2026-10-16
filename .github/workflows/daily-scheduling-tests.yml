@@ -1,0 +1,33 @@
+name: Reliable daily wallpaper scheduler
+on:
+  pull_request:
+    paths:
+      - 'Services/Scheduling/**'
+      - 'Services/AutoGenerateService.cs'
+      - 'Services/Settings.cs'
+      - 'Views/SettingsView.xaml'
+      - 'Views/SettingsView.xaml.cs'
+      - 'Views/MainView.xaml.cs'
+      - 'MainWindow.xaml.cs'
+      - 'App.xaml.cs'
+      - 'Services/Wallpaper.cs'
+      - 'tests/WallTrek.Scheduling.Tests/**'
+      - '.github/workflows/daily-scheduling-tests.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  daily-scheduling:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Run deterministic Windows time zone/DST, recovery and idempotency tests
+        run: dotnet run --project tests/WallTrek.Scheduling.Tests/WallTrek.Scheduling.Tests.csproj -c Release
+      - name: Run existing reference/scenario tests
+        run: dotnet run --project tests/WallTrek.Personalization.Tests/WallTrek.Personalization.Tests.csproj -c Release
+      - name: Build full WinUI app
+        run: dotnet build WallTrek.csproj -c Debug

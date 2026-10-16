@@ -3,6 +3,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using System;
 using WallTrek.Services;
+using WallTrek.Services.Scheduling;
 using Windows.UI;
 
 namespace WallTrek
@@ -60,11 +61,10 @@ namespace WallTrek
             }
         }
         
-        public void TriggerAutoGenerate()
-        {
-            // Delegate to the MainView
-            MainViewControl.TriggerAutoGenerate();
-        }
+        public Task<ScheduledRunOutcome> TriggerAutoGenerateAsync(CancellationToken ct) =>
+            MainViewControl.TriggerAutoGenerateAsync(ct);
+
+        public void TriggerAutoGenerate() => MainViewControl.TriggerAutoGenerate();
         
         public void TriggerImFeelingLucky()
         {

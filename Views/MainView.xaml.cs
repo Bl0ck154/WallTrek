@@ -10,6 +10,7 @@ using System.Threading.Tasks;
 using WallTrek.Services;
 using WallTrek.Services.ImageGen;
 using WallTrek.Services.Personalization;
+using WallTrek.Services.Scheduling;
 using WallTrek.Services.Providers;
 using WallTrek.Services.Profiles;
 using WallTrek.Services.TextGen;
@@ -23,6 +24,7 @@ namespace WallTrek.Views
         public event EventHandler? NavigateToSettings;
         public event EventHandler? NavigateToImageGrid;
         private CancellationTokenSource? _cancellationTokenSource;
+        private int _generationBusy;
         private PromptGenerationResult? _currentPromptGenerationResult;
         private readonly Random _random = new();
         // Guards the profile/word-list quick-switch dropdowns while we populate them in code.
@@ -67,11 +69,15 @@ namespace WallTrek.Views
             });
         }
         
-        public async void TriggerAutoGenerate()
+        public async Task<ScheduledRunOutcome> TriggerAutoGenerateAsync(CancellationToken ct = default)
         {
             var settings = Settings.Instance;
-            await RunGenerationBatch(1, randomPromptEachTime: settings.AutoGenerateSource == "random");
+            return await RunGenerationBatch(1,
+                randomPromptEachTime: settings.AutoGenerateSource == "random",
+                externalCancellation: ct);
         }
+
+        public async void TriggerAutoGenerate() => await TriggerAutoGenerateAsync();
 
         private void LoadSettings()
         {
@@ -193,11 +199,15 @@ namespace WallTrek.Views
         // Runs one or more generations as a single cancellable batch. When randomPromptEachTime
         // is true (the Random Image button) a fresh random prompt is generated before every image;
         // otherwise each image uses the prompt currently in the text box.
-        private async Task RunGenerationBatch(int count, bool randomPromptEachTime)
+        private async Task<ScheduledRunOutcome> RunGenerationBatch(int count,
+            bool randomPromptEachTime, CancellationToken externalCancellation = default)
         {
+            if (Interlocked.CompareExchange(ref _generationBusy, 1, 0) != 0)
+                return ScheduledRunOutcome.Busy;
             if (count < 1) count = 1;
 
-            _cancellationTokenSource = new CancellationTokenSource();
+            _cancellationTokenSource =
+                CancellationTokenSource.CreateLinkedTokenSource(externalCancellation);
             var token = _cancellationTokenSource.Token;
 
             int succeeded = 0;
@@ -262,7 +272,9 @@ namespace WallTrek.Views
                 SetGeneratingState(false);
                 _cancellationTokenSource?.Dispose();
                 _cancellationTokenSource = null;
+                Interlocked.Exchange(ref _generationBusy, 0);
             }
+            return succeeded == count ? ScheduledRunOutcome.Applied : ScheduledRunOutcome.Failed;
         }
 
         private async void PersonalizationEditor_Click(object sender, RoutedEventArgs e)
@@ -486,11 +498,17 @@ namespace WallTrek.Views
                 await new PersonalizationHistory().RecordAsync(filePath, prepared,
                     scene.Name, personalizedRender?.ProviderId ?? selectedOption.Provider.ToString(),
                     currentImgModel, token);
-                library.CommitSuccess(prepared);
-                RefreshPersonalizationStatus();
             }
 
+            // Applying the wallpaper is the success boundary; failed generation keeps
+            // the prior background. Do not advance scenario rotation before apply.
+            token.ThrowIfCancellationRequested();
             Wallpaper.Set(filePath);
+            if (prepared is not null)
+            {
+                PersonalizationLibrary.Default.CommitSuccess(prepared);
+                RefreshPersonalizationStatus();
+            }
         }
 
         private async void OpenFolderButton_Click(object sender, RoutedEventArgs e)
