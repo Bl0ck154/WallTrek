@@ -1,24 +1,30 @@
-# Windows installer test handoff
+# Windows portable test build (no installer)
 
-This is an unsigned experimental Windows 10/11 x64 build, not a verified stable release.
+This is an unsigned **test version** for Windows 10/11 x64, not a validated public release. It bundles the WinUI/Windows App SDK and .NET dependencies. The portable folder contains numerous internal DLL/runtime files; they are needed to run the app, but all reside inside one top-level WallTrek folder.
 
-## Installation
+## First run
 
-1. Open the [Windows installer workflow](https://github.com/Bl0ck154/WallTrek/actions/workflows/windows-portable-test-build.yml) and choose a successful run for the feature PR or main.
-2. Download the artifact **WallTrek-Windows-x64-Installer-test**, then extract the ZIP wrapper. Inside is just one installer EXE.
-3. Run **WallTrek-Windows-x64-Setup.exe**. It installs under your Windows user profile without administrator rights and can create a desktop shortcut.
-4. Launch WallTrek from the Start menu. The installer bundles the .NET 10 and Windows App SDK dependencies, which live inside the installed application folder, not beside the downloaded installer.
+1. Open the [portable Windows build](https://github.com/Bl0ck154/WallTrek/actions/workflows/windows-portable-test-build.yml). Select the latest **successful** manual build on `main`.
+2. Under **Artifacts**, download `WallTrek-Portable-Windows-x64` (GitHub sign-in may be needed).
+3. Extract the archive to a writable user folder, for example `%USERPROFILE%\Apps\WallTrek`. The extracted archive already contains a `WallTrek` folder with `WallTrek.exe` inside. **Do not use Program Files and do not run any setup.**
+4. Run `WallTrek.exe` directly. You can optionally make a desktop shortcut to it.
 
-This build is not code signed; verify the GitHub source and follow local Windows security policies. Existing app settings and user images remain after uninstall, intentionally.
+## Updates without reinstalling
 
-## First real smoke test
+1. Close WallTrek **completely**, including Quit from its system-tray menu. Running DLLs can remain locked while it is in the tray.
+2. Download the newest successful portable artifact and unzip it.
+3. Copy the **contents of the new WallTrek folder into your existing WallTrek folder**, replacing existing files. You do not need to run any installer or have admin rights.
+4. Launch the same `WallTrek.exe`. Check `BUILD_INFO.txt` for the version/commit. If an old DLL appears incompatible or a library was removed, rename your old application folder as a backup, unpack a clean new folder at the **same path**, and start it.
 
-- Check the compact main window and Advanced prompt tools at your normal display resolution.
-- In Settings test the Codex CLI/login *probe*. Logged-in status is **not** proof that experimental image generation works. No tokens should ever be pasted into WallTrek.
-- The separate unofficial codex-imagegen-cli helper is *not included*. It may access the currently signed-in Codex credentials and use undocumented endpoints; only install a reviewed helper if you explicitly accept its risks.
-- With an eligible reviewed helper, test real image generation first. Then import disposable images, preview a scenario, explicitly consent to the destination and test reference editing. Existing wallpapers must remain unchanged on errors.
-- Finally test the daily schedule after opting into Run on Windows Startup. The app does not wake or power on a computer; missed slots recover after sign-in.
+Settings, scenarios, history, API credentials and generated images are stored under your Windows user profile, outside the application folder, so simply replacing binaries should not erase them. Back up those settings when upgrading from an old build. If you **move** the portable app to a different path, toggle **Run on Windows Startup** off and on in Settings so its shortcut points to the new location.
 
-Report back with a screenshot, error messages without credentials and whether Codex generated a real image. See [issue #7](https://github.com/Bl0ck154/WallTrek/issues/7).
+This is still a self-contained .NET/WinUI desktop app. The archive may be large, but no files have to be installed into Program Files, and no extra runtime or Visual Studio installation is needed to launch it.
 
-The old portable ZIP workflow has been replaced with the installable executable.
+## Smoke test
+
+- Check that the window layout, Settings, image model picker and Personalize editor open.
+- Test the local Codex login/helper detection. Codex image generation still requires a **separately installed, reviewed unofficial helper** and may not be supported by the signed-in account. Never send us `auth.json` or API keys.
+- With a disposable photo and explicit consent, test a real reference edit if the helper is available.
+- Test the wallpaper set action and daily timer after enabling Windows startup; the app cannot wake a sleeping/off computer.
+
+Send a screenshot and a sanitized error message if anything breaks; release acceptance remains in [issue #7](https://github.com/Bl0ck154/WallTrek/issues/7).
