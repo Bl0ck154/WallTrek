@@ -1,6 +1,8 @@
 // SettingsView.xaml.cs
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Media.Imaging;
+using Windows.Storage.Streams;
 using System;
 using System.Diagnostics;
 using System.IO;
@@ -87,7 +89,20 @@ namespace WallTrek.Views
                     ? "Create a tasteful landscape wallpaper featuring the recognizable subject, preserve their identity and proportions."
                     : "A peaceful mountain lake at sunrise, photographic landscape wallpaper, no text.";
                 var output = await CreateCodexBridgeFromUi().GenerateAsync(new CodexImageRequest(prompt, refs));
-                // Bytes have passed PNG validation; do not save/distribute this smoke-test image.
+                // Show the real validated bytes for human visual inspection, never publish them.
+                using (var stream = new InMemoryRandomAccessStream())
+                {
+                    using (var writer = new DataWriter(stream))
+                    {
+                        writer.WriteBytes(output.Png);
+                        await writer.StoreAsync();
+                        writer.DetachStream();
+                    }
+                    stream.Seek(0);
+                    var bitmap = new BitmapImage();
+                    await bitmap.SetSourceAsync(stream);
+                    CodexTestPreview.Source = bitmap;
+                }
                 CodexProbeResultTextBlock.Text =
                     $"Validated {output.Width}×{output.Height} PNG from the experimental helper " +
                     $"(v{output.HelperVersion ?? "unknown"}). " +
