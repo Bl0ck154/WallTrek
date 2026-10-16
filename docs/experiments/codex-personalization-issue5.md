@@ -27,10 +27,10 @@ For a **real, consented Windows desktop test** using an already signed-in Codex 
 
 ```powershell
 $env:WALLTREK_CODEX_LIVE_CONSENT = "I_APPROVE_CHATGPT_UPLOAD"
-$env:WALLTREK_CODEX_LIVE_REFERENCE_PATH = "C:\\test-fixtures\\disposable-portrait.png"
+$env:WALLTREK_CODEX_LIVE_REFERENCE_PATH = "C:\test-fixtures\disposable-portrait.png"
 dotnet run --project tests/WallTrek.CodexPersonalization.Tests/WallTrek.CodexPersonalization.Tests.csproj -c Release -- --live
-Remove-Item Env:\\WALLTREK_CODEX_LIVE_CONSENT
-Remove-Item Env:\\WALLTREK_CODEX_LIVE_REFERENCE_PATH
+Remove-Item Env:\WALLTREK_CODEX_LIVE_CONSENT
+Remove-Item Env:\WALLTREK_CODEX_LIVE_REFERENCE_PATH
 ```
 
 This optional check does a **real image edit** and asserts that a valid PNG was returned; it does not test face similarity automatically. Never use production personal images for a publicly shared test, never put log dumps or account files into CI, and do not describe the integration as production-ready until that real test and Windows GUI workflow succeed. The helper is experimental and may fail even with valid local sign-in.
