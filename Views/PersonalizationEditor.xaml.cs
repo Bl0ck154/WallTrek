@@ -130,12 +130,16 @@ public sealed partial class PersonalizationEditor : UserControl
         EditorStatus.Text = "Personalization off. Original wallpaper workflow restored.";
     }
 
-    private async void DeleteScenario_Click(object sender, RoutedEventArgs e)
+    private void DeleteScenario_Click(object sender, RoutedEventArgs e)
     {
         if (_library.Snapshot().Scenarios.All(s => s.Id != _currentScenarioId)) return;
-        if (!await ConfirmAsync("Delete scenario?", "Remove this saved scenario (history remains available)."))
+        if (ConfirmDeleteScenario.IsChecked != true)
+        {
+            EditorStatus.Text = "Check the deletion confirmation box first.";
             return;
+        }
         _library.DeleteScenario(_currentScenarioId);
+        ConfirmDeleteScenario.IsChecked = false;
         RefreshAll();
     }
 
@@ -192,13 +196,16 @@ public sealed partial class PersonalizationEditor : UserControl
         { EditorStatus.Text = ex.Message; }
     }
 
-    private async void DeletePhoto_Click(object sender, RoutedEventArgs e)
+    private void DeletePhoto_Click(object sender, RoutedEventArgs e)
     {
         if (PhotoList.SelectedItem is not ReferencePhoto photo) return;
-        if (!await ConfirmAsync("Delete private photo?",
-            "Remove the app's stored original and sanitized copy? Previously generated wallpapers remain."))
+        if (ConfirmDeletePhoto.IsChecked != true)
+        {
+            EditorStatus.Text = "Check the photo deletion confirmation box first.";
             return;
+        }
         _library.DeletePhoto(photo.Id);
+        ConfirmDeletePhoto.IsChecked = false;
         PhotoPreview.Source = null;
         RefreshAll();
         EditorStatus.Text = "Photo removed from library.";
@@ -225,7 +232,7 @@ public sealed partial class PersonalizationEditor : UserControl
         { EditorStatus.Text = ex.Message; }
     }
 
-    private async void ApproveDestination_Click(object sender, RoutedEventArgs e)
+    private void ApproveDestination_Click(object sender, RoutedEventArgs e)
     {
         if (DestinationProfiles.SelectedItem is not ProviderChoice item)
         {
@@ -240,24 +247,14 @@ public sealed partial class PersonalizationEditor : UserControl
             return;
         }
         var origin = new Uri(profile.BaseUrl).GetLeftPart(UriPartial.Authority);
-        if (!await ConfirmAsync("Approve upload of personal photos?",
-            $"Send {prepared.ReferenceIds.Count} sanitized photo(s) to {origin} using '{profile.Name}' " +
-            "for image edits? This provider is external. Usage may be billed. Approval is revoked if photos or scenario change."))
-            return;
-        _library.ApproveReferences(prepared.ScenarioId, profile.Id, origin, prepared.ReferenceIds);
-        EditorStatus.Text = $"Photos approved for {origin} only. Select this provider on the main screen.";
-    }
-
-    private async Task<bool> ConfirmAsync(string title, string message)
-    {
-        // The host dialog is already open; do not nest ContentDialogs. Use a local checkbox confirmation
-        // on the editor instead, or the host dialog must be closed first.
-        var dialog = new ContentDialog
+        if (ConfirmUpload.IsChecked != true)
         {
-            XamlRoot = XamlRoot, Title = title, Content = message,
-            PrimaryButtonText = "Confirm", CloseButtonText = "Cancel"
-        };
-        return await dialog.ShowAsync() == ContentDialogResult.Primary;
+            EditorStatus.Text = $"Review {origin} above and tick the photo upload consent checkbox first.";
+            return;
+        }
+        _library.ApproveReferences(prepared.ScenarioId, profile.Id, origin, prepared.ReferenceIds);
+        ConfirmUpload.IsChecked = false;
+        EditorStatus.Text = $"Photos approved for {origin} only. Select this provider on the main screen.";
     }
 
     private async Task LoadHistoryAsync()
