@@ -289,6 +289,19 @@ namespace WallTrek.Views
             SetStatus($"Generating wallpaper{batchLabel}...", Microsoft.UI.Colors.DodgerBlue);
             Logger.Info($"Generating wallpaper — image: {selectedOption.Id}, LLM: {selectedLlm.ModelId}");
 
+            // A manually entered Codex prompt needs no separate paid text-model API key.
+            // Keep the upstream title/tag generator unchanged for existing providers.
+            if (_currentPromptGenerationResult == null && selectedOption.Provider == ImageProvider.CodexExperimental)
+            {
+                _currentPromptGenerationResult = new PromptGenerationResult
+                {
+                    Prompt = PromptTextBox.Text,
+                    Title = "Codex Wallpaper",
+                    Tags = Array.Empty<string>(),
+                    LlmModelId = "codex-only"
+                };
+            }
+
             // If we don't have a cached prompt generation result (e.g., user typed their own prompt),
             // generate title and tags from the prompt
             if (_currentPromptGenerationResult == null)
