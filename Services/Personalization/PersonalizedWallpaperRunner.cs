@@ -10,8 +10,13 @@ public sealed record PersonalizedRenderResult(
 public static class PersonalizedWallpaperRunner
 {
     public static async Task<PersonalizedRenderResult> RunAsync(ImageModelOption option,
-        PreparedWallpaper prepared, PersonalizationLibrary library, CancellationToken ct)
+        PreparedWallpaper prepared, PersonalizationLibrary library, CancellationToken ct,
+        CodexPersonalizedImageProvider? codexForTesting = null)
     {
+        if (prepared.ReferenceIds.Count > 0 && option.Provider == ImageProvider.CodexExperimental)
+            return await RunCodexReferencesAsync(prepared, library,
+                codexForTesting ?? CodexPersonalizedImageProvider.FromSettings(), ct);
+
         if (prepared.ReferenceIds.Count > 0 && option.Provider != ImageProvider.CustomOpenAiCompatible)
             throw new ProviderException(ProviderFailure.UnsupportedOperation);
 
@@ -51,5 +56,35 @@ public static class PersonalizedWallpaperRunner
         var coordinator = new PersonalizedGenerationCoordinator(provider, edit);
         var imageResult = await coordinator.GenerateAsync(prepared, references, ct);
         return new PersonalizedRenderResult(imageResult, provider.ProviderId, model);
+    }
+
+    private static async Task<PersonalizedRenderResult> RunCodexReferencesAsync(
+        PreparedWallpaper prepared, PersonalizationLibrary library,
+        CodexPersonalizedImageProvider codex, CancellationToken ct)
+    {
+        // Explicit opt-in and per-host/per-photo approval must precede reading bytes
+        // or probing/spawning the experimental helper.
+        if (!WallTrek.Services.Settings.Instance.CodexExperimentalEnabled)
+            throw new InvalidOperationException(
+                "Enable experimental Codex ImageGen in Settings before using personal photos.");
+
+        if (!library.HasReferenceApproval(prepared, CodexPersonalConsent.ProviderId,
+                CodexPersonalConsent.Origin))
+            throw new InvalidOperationException(
+                "Codex photo upload not approved. In Personalize select Codex/ChatGPT and approve these photos.");
+
+        if (prepared.ReferenceIds.Count is < 1 or > 5)
+            throw new InvalidOperationException("Select 1–5 references for Codex editing.");
+
+        var probe = await codex.ProbeAsync(ct);
+        if (!probe.ConnectionOk)
+            throw new InvalidOperationException(probe.Status);
+
+        // No custom-provider fallback. A failed Codex edit leaves the previous wallpaper
+        // untouched and does not consume the scenario's next variation.
+        var sanitized = library.ReadForProvider(prepared.ReferenceIds);
+        var coordinator = new PersonalizedGenerationCoordinator(codex, codex.EditAsync);
+        var image = await coordinator.GenerateAsync(prepared, sanitized, ct);
+        return new(image, codex.ProviderId, "codex-imagegen-experimental");
     }
 }
