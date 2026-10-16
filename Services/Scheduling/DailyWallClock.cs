@@ -133,7 +133,10 @@ public static class DailyWallClock
     }
 
     public static string DueKey(DailyScheduleConfig config, DateOnly date) =>
-        config.Signature + "|" + ResolveZone(config.TimeZoneId).Id + "|" +
+        // Deliberately exclude the current resolved Windows local zone from the
+        // slot ID. Travelling across zones must not re-run the same local date.
+        // A selected fixed zone already participates in config.Signature.
+        config.Signature + "|" +
         date.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture);
 }
 
