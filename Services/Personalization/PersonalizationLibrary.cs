@@ -256,7 +256,9 @@ public sealed class PersonalizationLibrary
         {
             if (_state.ActiveScenarioId is not Guid id) return null;
             var scenario = _state.Scenarios.Single(s => s.Id == id);
-            return ScenarioComposer.Compose(scenario, _state.Photos.Where(p => p.Enabled).ToArray());
+            return ScenarioComposer.Compose(scenario, _state.Photos.Where(p => p.Enabled)
+                .OrderByDescending(p => p.Primary).ThenBy(p => p.Role == ReferenceRole.Style ? 1 : 0)
+                .ToArray());
         }
     }
 
@@ -266,8 +268,11 @@ public sealed class PersonalizationLibrary
         {
             var candidate = Copy(_state);
             var scene = candidate.Scenarios.Single(s => s.Id == prepared.ScenarioId);
-            var current = ScenarioComposer.Compose(scene, candidate.Photos.Where(p => p.Enabled).ToArray());
-            if (current.CombinationKey != prepared.CombinationKey || current.FinalPrompt != prepared.FinalPrompt)
+            var current = ScenarioComposer.Compose(scene, candidate.Photos.Where(p => p.Enabled)
+                .OrderByDescending(p => p.Primary).ThenBy(p => p.Role == ReferenceRole.Style ? 1 : 0)
+                .ToArray());
+            if (current.CombinationKey != prepared.CombinationKey || current.FinalPrompt != prepared.FinalPrompt ||
+                current.ReferenceSignature != prepared.ReferenceSignature)
                 throw new InvalidOperationException("Scenario or references changed during generation.");
             ScenarioComposer.CommitSuccess(scene, prepared);
             SaveCandidate(candidate);
