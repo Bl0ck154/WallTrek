@@ -482,6 +482,17 @@ namespace WallTrek.Views
                     Microsoft.UI.Colors.Red);
                 return;
             }
+            var runOnStartup = RunOnStartupCheckBox.IsChecked == true;
+            // Verify actual HKCU Run registration BEFORE changing settings in memory
+            // or persisting an allegedly durable daily schedule.
+            StartupManager.SetStartupEnabled(runOnStartup);
+            if (runOnStartup && !StartupManager.IsStartupEnabled() &&
+                AutoGenerateCheckBox.IsChecked == true && newMode == "daily")
+            {
+                ShowStatus("Windows startup registration failed; daily schedule was NOT saved.",
+                    Microsoft.UI.Colors.Red);
+                return;
+            }
 
             settings.ApiKey = ApiKeyTextBox.Text;
             settings.AnthropicApiKey = AnthropicApiKeyTextBox.Text;
@@ -517,17 +528,7 @@ namespace WallTrek.Views
 
             // Random word count is set on the main page now (0 = off), not here.
 
-            // Handle startup setting - only update registry, no need to store in settings
-            var runOnStartup = RunOnStartupCheckBox.IsChecked ?? false;
-            StartupManager.SetStartupEnabled(runOnStartup);
-            if (runOnStartup && !StartupManager.IsStartupEnabled() &&
-                settings.AutoGenerateEnabled && newMode == "daily")
-            {
-                ShowStatus("Windows startup registration failed; daily schedule was NOT saved.",
-                    Microsoft.UI.Colors.Red);
-                return;
-            }
-
+            // HKCU Run was registered/validated before mutating the active settings.
             settings.Save();
 
             // Refresh auto-generate service based on new settings
