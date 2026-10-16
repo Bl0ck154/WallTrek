@@ -232,6 +232,11 @@ public sealed partial class PersonalizationEditor : UserControl
         { EditorStatus.Text = ex.Message; }
     }
 
+    private void DestinationProfiles_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (ConfirmUpload is not null) ConfirmUpload.IsChecked = false;
+    }
+
     private void ApproveDestination_Click(object sender, RoutedEventArgs e)
     {
         if (DestinationProfiles.SelectedItem is not ProviderChoice item)
