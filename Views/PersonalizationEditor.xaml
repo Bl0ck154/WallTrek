@@ -10,8 +10,7 @@
                 <StackPanel Spacing="8" Padding="6">
                     <Button Content="Import up to 5 photos…" Click="ImportPhotos_Click" HorizontalAlignment="Left"/>
                     <ListView x:Name="PhotoList" Height="128" SelectionChanged="PhotoList_SelectionChanged"
-                              DisplayMemberPath="Label"
-                              SelectionChanged="DestinationProfiles_SelectionChanged"/>
+                              DisplayMemberPath="Label"/>
                     <Image x:Name="PhotoPreview" Width="190" Height="120" Stretch="Uniform"
                            HorizontalAlignment="Left"/>
                     <TextBox x:Name="PhotoLabel" Header="Photo label" MaxLength="100"/>
@@ -69,7 +68,7 @@
                     <TextBlock x:Name="VariationLabel" TextWrapping="Wrap"/>
                     <ComboBox x:Name="DestinationProfiles" Header="Allow photo transfer to this specific provider"
                               MinWidth="400" HorizontalAlignment="Left"
-                              DisplayMemberPath="Label"/>
+                              DisplayMemberPath="Label" SelectionChanged="DestinationProfiles_SelectionChanged"/>
                     <CheckBox x:Name="ConfirmUpload" Content="I consent to uploading sanitized photos to the selected provider (host shown above)"/>
                     <Button Content="Approve these photos for this provider" Click="ApproveDestination_Click"
                             HorizontalAlignment="Left"/>
