@@ -1,8 +1,14 @@
 # Personalized Daily Wallpapers — Fork Roadmap
 
-Status: **approved product direction / planning only** (2026-10-16). No feature described here is implemented merely because it is listed.
+Status: **development implementation integrated into main on 2026-10-16**, via [PR #4](https://github.com/Bl0ck154/WallTrek/pull/4). Automated Windows tests and WinUI build passed on integration head `dbc3faaf`. **Not a validated release**; see checklist below.
 Repository: [Bl0ck154/WallTrek](https://github.com/Bl0ck154/WallTrek), fork of [swax/WallTrek](https://github.com/swax/WallTrek) (MIT).
 Read `CLAUDE.md`, `docs/CODEX_INTEGRATION.md`, and `docs/PROVIDER_ARCHITECTURE.md` before development.
+
+## Implementation checkpoint (2026-10-16)
+
+- **Integrated into main, automated tests green:** custom OpenAI-compatible API provider profiles, encrypted per-user credentials, reference-photo library, scenario editor/no-repeat variations, provenance/history, and **opt-in experimental** Codex subprocess adapter (prompt-only from normal wallpaper screen; image editing is available only through separate bridge/Settings probe).
+- **Not complete:** linking the Codex helper's edit with the personalized scenario/photo flow ([#5](https://github.com/Bl0ck154/WallTrek/issues/5)); durable once-per-day local-time scheduling across reboot/sleep/DST ([#6](https://github.com/Bl0ck154/WallTrek/issues/6)); consented live Windows API/Codex image tests, UI smoke tests, secret migration and account-terms review before shipping ([#7](https://github.com/Bl0ck154/WallTrek/issues/7)).
+- **Do not describe this as released or Codex generation as proven.** CI uses fake/mock provider/helper tests and Windows compilation. No actual eligible Codex account or third-party reference edit has been tested. The experimental Codex choice is disabled by default and must remain opt-in.
 
 ## Product goal
 
