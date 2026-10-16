@@ -289,6 +289,19 @@ namespace WallTrek.Views
             SetStatus($"Generating wallpaper{batchLabel}...", Microsoft.UI.Colors.DodgerBlue);
             Logger.Info($"Generating wallpaper — image: {selectedOption.Id}, LLM: {selectedLlm.ModelId}");
 
+            // Manually entered prompts can use a custom image host without a separate LLM API key.
+            if (_currentPromptGenerationResult == null &&
+                selectedOption.Provider == ImageProvider.CustomOpenAiCompatible)
+            {
+                _currentPromptGenerationResult = new PromptGenerationResult
+                {
+                    Prompt = PromptTextBox.Text,
+                    Title = "Custom Wallpaper",
+                    Tags = Array.Empty<string>(),
+                    LlmModelId = "manual-prompt"
+                };
+            }
+
             // If we don't have a cached prompt generation result (e.g., user typed their own prompt),
             // generate title and tags from the prompt
             if (_currentPromptGenerationResult == null)
@@ -742,9 +755,14 @@ namespace WallTrek.Views
 
             decimal total = llmCents + imgCents + up.Cents;
 
-            RandomImageButton.Content = $"Random Image  (~{total:0}¢)";
+            bool unknownImagePrice = imgSelected.Any(o => o.Provider == ImageProvider.CustomOpenAiCompatible);
+            RandomImageButton.Content = unknownImagePrice
+                ? "Random Image (image price unknown)"
+                : $"Random Image  (~{total:0}¢)";
             var callDetail = promptCalls > 1m ? $" (~{promptCalls:0.#} calls)" : string.Empty;
-            CostEstimateTextBlock.Text = $"≈ {llmCents:0.#}¢ prompt{callDetail} + {imgCents:0.#}¢ image + {up.Cents:0.#}¢ upscale";
+            CostEstimateTextBlock.Text = unknownImagePrice
+                ? $"≈ {llmCents:0.#}¢ prompt{callDetail} + unknown image price + {up.Cents:0.#}¢ upscale"
+                : $"≈ {llmCents:0.#}¢ prompt{callDetail} + {imgCents:0.#}¢ image + {up.Cents:0.#}¢ upscale";
         }
 
         private decimal GetExpectedPromptCallCount()
