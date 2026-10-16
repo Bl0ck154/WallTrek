@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Program.cs"/>
+    <Compile Include="../../Services/Personalization/PersonalizationModels.cs" Link="PersonalizationModels.cs"/>
+    <Compile Include="../../Services/Personalization/PersonalizationLibrary.cs" Link="PersonalizationLibrary.cs"/>
+    <Compile Include="../../Services/Personalization/PersonalizationHistory.cs" Link="PersonalizationHistory.cs"/>
+    <Compile Include="../../Services/Personalization/PersonalizedGenerationCoordinator.cs" Link="PersonalizedGenerationCoordinator.cs"/>
+    <Compile Include="../../Services/Providers/ProviderContracts.cs" Link="ProviderContracts.cs"/>
+    <Compile Include="../../Services/Providers/ProviderImageValidator.cs" Link="ProviderImageValidator.cs"/>
+    <Compile Include="../../Services/ImageGen/IImageGenerationService.cs" Link="IImageGenerationService.cs"/>
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.8"/>
+    <PackageReference Include="System.Drawing.Common" Version="10.0.8"/>
+  </ItemGroup>
+</Project>
