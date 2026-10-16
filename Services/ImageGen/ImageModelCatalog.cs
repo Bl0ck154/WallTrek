@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Linq;
+using WallTrek.Services;
 
 namespace WallTrek.Services.ImageGen
 {
@@ -9,8 +10,12 @@ namespace WallTrek.Services.ImageGen
     /// </summary>
     public static class ImageModelCatalog
     {
-        public static IReadOnlyList<ImageModelOption> Options { get; } = new List<ImageModelOption>
+        private static readonly IReadOnlyList<ImageModelOption> AllOptions = new List<ImageModelOption>
         {
+            new() { Id = "codex-imagegen@experimental", Provider = ImageProvider.CodexExperimental,
+                    ModelId = "codex-imagegen-experimental", Model = "Codex (experimental)",
+                    Quality = "High", Dimensions = "1536×1024 requested",
+                    Price = "Account quota; price unknown", Cents = 0m },
             new() { Id = "gemini-3-pro-image@4K", Provider = ImageProvider.Google, ModelId = "gemini-3-pro-image",
                     Model = "Nano Banana Pro", Quality = "4K", Dimensions = "5504×3072", Price = "~24¢", Cents = 24m,
                     ImageSize = "4K", AspectRatio = "16:9" },
@@ -56,6 +61,12 @@ namespace WallTrek.Services.ImageGen
                     Model = "GPT Image 2", Quality = "Low", Dimensions = "1536×1024", Price = "~0.5¢", Cents = 0.5m,
                     OpenAiQuality = "low" },
         };
+
+        // The model is not selectable until the user acknowledges risk in Settings.
+        public static IReadOnlyList<ImageModelOption> Options =>
+            Settings.Instance.CodexExperimentalEnabled
+                ? AllOptions
+                : AllOptions.Where(o => o.Provider != ImageProvider.CodexExperimental).ToArray();
 
         /// <summary>Default selection for fresh installs — good quality, low cost, native 16:9.</summary>
         public static ImageModelOption Default =>
