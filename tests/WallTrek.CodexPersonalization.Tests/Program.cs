@@ -258,10 +258,26 @@ sealed class FakeClient : ICodexPersonalImageClient
         RunCalls++;
         LastPaths = request.References?.Select(r => r.Path).ToList() ?? new();
         LastRoles = request.References?.Select(r => r.Role).ToList() ?? new();
-        Assert(LastPaths.All(File.Exists), "Helper did not see an accessible reference file");
-        Assert(LastPaths.All(path => ProviderImageValidator.Check(File.ReadAllBytes(path)).Mime == "image/jpeg"),
+        Fixtures.Assert(LastPaths.All(File.Exists), "Helper did not see an accessible reference file");
+        Fixtures.Assert(LastPaths.All(path => ProviderImageValidator.Check(File.ReadAllBytes(path)).Mime == "image/jpeg"),
             "Temporary reference was not an EXIF-free JPEG");
         if (Failure.HasValue) throw new CodexImageException(Failure.Value);
-        return Task.FromResult(new CodexImageOutput(Picture(ImageFormat.Png), 96, 64, Session.HelperVersion));
+        return Task.FromResult(new CodexImageOutput(Fixtures.Picture(ImageFormat.Png), 96, 64, Session.HelperVersion));
+    }
+}
+
+static class Fixtures
+{
+    public static void Assert(bool condition, string message)
+    {
+        if (!condition) throw new Exception(message);
+    }
+    public static byte[] Picture(ImageFormat format)
+    {
+        using var bitmap = new Bitmap(96, 64);
+        using (var graphics = Graphics.FromImage(bitmap)) graphics.Clear(Color.SteelBlue);
+        using var stream = new MemoryStream();
+        bitmap.Save(stream, format);
+        return stream.ToArray();
     }
 }
