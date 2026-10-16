@@ -108,8 +108,6 @@ public static class ScenarioComposer
     public static void CommitSuccess(WallpaperScenario scene, PreparedWallpaper prepared)
     {
         if (scene.Id != prepared.ScenarioId) throw new InvalidOperationException("Wrong scenario.");
-        if (scene.UsedCombinationKeys.Contains(prepared.CombinationKey, StringComparer.Ordinal))
-            throw new InvalidOperationException("This variation was already committed.");
         var count = Math.Max(1, scene.Pools.Aggregate(1, (n, pair) =>
             checked(n * pair.Value.Distinct(StringComparer.Ordinal).Count())));
         if (scene.UsedCombinationKeys.Count >= count)
@@ -117,6 +115,8 @@ public static class ScenarioComposer
             scene.UsedCombinationKeys.Clear();
             scene.Cycle++;
         }
+        else if (scene.UsedCombinationKeys.Contains(prepared.CombinationKey, StringComparer.Ordinal))
+            throw new InvalidOperationException("This variation was already committed.");
         scene.UsedCombinationKeys.Add(prepared.CombinationKey);
         scene.LastCombinationKey = prepared.CombinationKey;
     }
