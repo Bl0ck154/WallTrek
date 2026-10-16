@@ -11,7 +11,6 @@ public sealed class OpenAiCompatibleProvider : IImageProvider
     private readonly ProviderProfile _profile;
     private readonly HttpClient _http;
     private readonly string? _key;
-    private readonly bool _ownsHttp;
     private const int MaxOutputBytes = 24 * 1024 * 1024;
     private const int MaxResponseBytes = 36 * 1024 * 1024;
     private static readonly TimeSpan RequestTimeout = TimeSpan.FromMinutes(5);
@@ -26,9 +25,9 @@ public sealed class OpenAiCompatibleProvider : IImageProvider
         if (_profile.AuthMode != ProviderAuthMode.None && string.IsNullOrWhiteSpace(_key))
             throw new ProviderException(ProviderFailure.CredentialUnavailable);
         // No cookies or automatic redirects (especially with Authorization headers).
-        _ownsHttp = http is null;
         _http = http ?? new HttpClient(new HttpClientHandler
         { AllowAutoRedirect = false, UseCookies = false }, disposeHandler: true);
+        if (http is null) _http.Timeout = Timeout.InfiniteTimeSpan; // operation CTS owns the 5-minute limit
     }
 
     public async Task<ProviderCapabilities> ProbeAsync(CancellationToken ct = default)
@@ -50,6 +49,19 @@ public sealed class OpenAiCompatibleProvider : IImageProvider
         => ExecuteAsync(request, true, ct);
 
     private async Task<ProviderImageResult> ExecuteAsync(ProviderImageRequest request, bool edit, CancellationToken ct)
+    {
+        using var operation = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        operation.CancelAfter(RequestTimeout); // includes response body and signed-image download
+        try { return await ExecuteCoreAsync(request, edit, operation.Token); }
+        catch (ProviderException ex) when (ex.Reason == ProviderFailure.Cancelled && !ct.IsCancellationRequested)
+        { throw new ProviderException(ProviderFailure.TimedOut); }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        { throw new ProviderException(ProviderFailure.Cancelled); }
+        catch (OperationCanceledException)
+        { throw new ProviderException(ProviderFailure.TimedOut); }
+    }
+
+    private async Task<ProviderImageResult> ExecuteCoreAsync(ProviderImageRequest request, bool edit, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(request.Prompt) || request.Prompt.Length > 32_000)
             throw new ProviderException(ProviderFailure.InvalidConfiguration);
