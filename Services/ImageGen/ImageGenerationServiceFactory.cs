@@ -1,4 +1,5 @@
 using WallTrek.Services;
+using WallTrek.Services.Providers;
 
 namespace WallTrek.Services.ImageGen
 {
@@ -21,6 +22,12 @@ namespace WallTrek.Services.ImageGen
                     if (string.IsNullOrEmpty(settings.GoogleApiKey))
                         throw new InvalidOperationException("Google API key is required for Imagen and Gemini image models");
                     return new GoogleImagenService(settings.GoogleApiKey, option.ModelId, option.ImageSize, option.AspectRatio);
+
+                case ImageProvider.CustomOpenAiCompatible:
+                    if (!option.Id.StartsWith("custom:", StringComparison.Ordinal) ||
+                        !Guid.TryParseExact(option.Id.AsSpan(7), "N", out var profileId))
+                        throw new ProviderException(ProviderFailure.InvalidConfiguration);
+                    return new CustomImageGenerationService(ProviderRegistry.Create(profileId));
 
                 default:
                     throw new ArgumentException($"Unsupported image provider: {option.Provider}");
