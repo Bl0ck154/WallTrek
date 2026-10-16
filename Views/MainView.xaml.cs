@@ -742,9 +742,14 @@ namespace WallTrek.Views
 
             decimal total = llmCents + imgCents + up.Cents;
 
-            RandomImageButton.Content = $"Random Image  (~{total:0}¢)";
+            var hasUnknownCodexCost = imgSelected.Any(o => o.Provider == ImageProvider.CodexExperimental);
+            RandomImageButton.Content = hasUnknownCodexCost
+                ? "Random Image  (Codex quota / cost unknown)"
+                : $"Random Image  (~{total:0}¢)";
             var callDetail = promptCalls > 1m ? $" (~{promptCalls:0.#} calls)" : string.Empty;
-            CostEstimateTextBlock.Text = $"≈ {llmCents:0.#}¢ prompt{callDetail} + {imgCents:0.#}¢ image + {up.Cents:0.#}¢ upscale";
+            CostEstimateTextBlock.Text = hasUnknownCodexCost
+                ? $"≈ {llmCents:0.#}¢ prompt{callDetail} + Codex account limits (image cost unknown) + {up.Cents:0.#}¢ upscale"
+                : $"≈ {llmCents:0.#}¢ prompt{callDetail} + {imgCents:0.#}¢ image + {up.Cents:0.#}¢ upscale";
         }
 
         private decimal GetExpectedPromptCallCount()
