@@ -10,7 +10,8 @@
                 <StackPanel Spacing="8" Padding="6">
                     <Button Content="Import up to 5 photos…" Click="ImportPhotos_Click" HorizontalAlignment="Left"/>
                     <ListView x:Name="PhotoList" Height="128" SelectionChanged="PhotoList_SelectionChanged"
-                              DisplayMemberPath="Label"/>
+                              DisplayMemberPath="Label"
+                              SelectionChanged="DestinationProfiles_SelectionChanged"/>
                     <Image x:Name="PhotoPreview" Width="190" Height="120" Stretch="Uniform"
                            HorizontalAlignment="Left"/>
                     <TextBox x:Name="PhotoLabel" Header="Photo label" MaxLength="100"/>
