@@ -1,5 +1,7 @@
 using System.Collections.Generic;
 using System.Linq;
+using WallTrek.Services.Providers;
+using WallTrek.Services;
 
 namespace WallTrek.Services.ImageGen
 {
@@ -9,8 +11,12 @@ namespace WallTrek.Services.ImageGen
     /// </summary>
     public static class ImageModelCatalog
     {
-        public static IReadOnlyList<ImageModelOption> Options { get; } = new List<ImageModelOption>
+        private static readonly IReadOnlyList<ImageModelOption> BuiltinOptions = new List<ImageModelOption>
         {
+            new() { Id = "codex-imagegen@experimental", Provider = ImageProvider.CodexExperimental,
+                    ModelId = "codex-imagegen-experimental", Model = "Codex (experimental)",
+                    Quality = "High", Dimensions = "1536×1024 requested",
+                    Price = "Account quota; price unknown", Cents = 0m },
             new() { Id = "gemini-3-pro-image@4K", Provider = ImageProvider.Google, ModelId = "gemini-3-pro-image",
                     Model = "Nano Banana Pro", Quality = "4K", Dimensions = "5504×3072", Price = "~24¢", Cents = 24m,
                     ImageSize = "4K", AspectRatio = "16:9" },
@@ -56,6 +62,29 @@ namespace WallTrek.Services.ImageGen
                     Model = "GPT Image 2", Quality = "Low", Dimensions = "1536×1024", Price = "~0.5¢", Cents = 0.5m,
                     OpenAiQuality = "low" },
         };
+
+        // Query the profile registry when showing the dropdown; never hardcode supported hosts.
+        public static IReadOnlyList<ImageModelOption> Options =>
+            BuiltinOptions.Where(o => o.Provider != ImageProvider.CodexExperimental || Settings.Instance.CodexExperimentalEnabled).Concat(ReadCustomOptions()).ToArray();
+
+        private static IEnumerable<ImageModelOption> ReadCustomOptions()
+        {
+            IReadOnlyList<ProviderProfile> profiles;
+            try { profiles = ProviderProfileStore.Default.List(); }
+            catch (Exception ex) when (ex is IOException or InvalidDataException or ProviderException or TypeInitializationException)
+            {
+                // Damaged custom config must not break legacy OpenAI/Google startup.
+                return Array.Empty<ImageModelOption>();
+            }
+            return profiles.Where(p => p.Enabled).Select(p => new ImageModelOption
+            {
+                Id = "custom:" + p.Id.ToString("N"),
+                Provider = ImageProvider.CustomOpenAiCompatible,
+                ModelId = p.ImageModel, Model = p.Name + " / " + p.ImageModel,
+                Quality = "Provider default", Dimensions = "Provider default",
+                Price = "Unknown", Cents = 0m
+            }).ToArray();
+        }
 
         /// <summary>Default selection for fresh installs — good quality, low cost, native 16:9.</summary>
         public static ImageModelOption Default =>

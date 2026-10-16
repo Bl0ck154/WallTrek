@@ -1,0 +1,25 @@
+name: Personalized wallpapers checks
+on:
+  pull_request:
+    paths:
+      - 'Services/Personalization/**'
+      - 'Views/PersonalizationEditor.*'
+      - 'Views/MainView.xaml'
+      - 'Views/MainView.xaml.cs'
+      - 'tests/WallTrek.Personalization.Tests/**'
+      - '.github/workflows/personalization-tests.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  personalization:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Unit tests for refs/scenarios/edit contract/history
+        run: dotnet run --project tests/WallTrek.Personalization.Tests/WallTrek.Personalization.Tests.csproj --configuration Release
+      - name: Build WinUI application
+        run: dotnet build WallTrek.csproj --configuration Debug

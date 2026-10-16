@@ -1,6 +1,7 @@
 using System.Reflection.Metadata;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using WallTrek.Services.Providers;
 
 namespace WallTrek.Services
 {
@@ -66,6 +67,7 @@ namespace WallTrek.Services
         public DateTime? DeviantArtTokenExpiry { get; set; }
         public string SelectedLlmModel { get; set; } = "gpt-5.6-sol";
         public string SelectedImageModel { get; set; } = "gemini-3.1-flash-image@2K";
+        public Guid? SelectedCustomImageProfileId { get; set; }
         public List<string> SelectedLlmModels { get; set; } = new();
         public List<string> SelectedImageModels { get; set; } = new();
         public string SelectedCategoryProfile { get; set; } = "Default";
@@ -79,6 +81,10 @@ namespace WallTrek.Services
         public string? StabilityApiKey { get; set; }
         public string? FalApiKey { get; set; }
         public int RandomWordCount { get; set; } = 0;
+        // Opt-in only. No tokens/credentials are stored by WallTrek.
+        public bool CodexExperimentalEnabled { get; set; }
+        public string? CodexExecutablePath { get; set; }
+        public string? CodexHelperPath { get; set; }
     }
 
     public class Settings
@@ -94,11 +100,15 @@ namespace WallTrek.Services
         public static Settings Instance { get; private set; } = new Settings();
 
         private SettingsModel _model = new();
+        private bool _settingsRecoveryRequired;
+
+        // Never overwrite an unreadable or partially migrated settings file with defaults.
+        public bool SettingsRecoveryRequired => _settingsRecoveryRequired;
 
         public string? ApiKey
         {
-            get => _model.ApiKey;
-            set => _model.ApiKey = value;
+            get => ReadSecret("openai", _model.ApiKey);
+            set { StoreSecret("openai", value); _model.ApiKey = null; }
         }
 
         public string? LastPrompt
@@ -163,26 +173,32 @@ namespace WallTrek.Services
 
         public string? DeviantArtClientSecret
         {
-            get => _model.DeviantArtClientSecret;
-            set => _model.DeviantArtClientSecret = value;
+            get => ReadSecret("deviantart-client", _model.DeviantArtClientSecret);
+            set { StoreSecret("deviantart-client", value); _model.DeviantArtClientSecret = null; }
         }
 
         public string? DeviantArtAccessToken
         {
-            get => _model.DeviantArtAccessToken;
-            set => _model.DeviantArtAccessToken = value;
+            get => ReadSecret("deviantart-access", _model.DeviantArtAccessToken);
+            set { StoreSecret("deviantart-access", value); _model.DeviantArtAccessToken = null; }
         }
 
         public string? DeviantArtRefreshToken
         {
-            get => _model.DeviantArtRefreshToken;
-            set => _model.DeviantArtRefreshToken = value;
+            get => ReadSecret("deviantart-refresh", _model.DeviantArtRefreshToken);
+            set { StoreSecret("deviantart-refresh", value); _model.DeviantArtRefreshToken = null; }
         }
 
         public DateTime? DeviantArtTokenExpiry
         {
             get => _model.DeviantArtTokenExpiry;
             set => _model.DeviantArtTokenExpiry = value;
+        }
+
+        public Guid? SelectedCustomImageProfileId
+        {
+            get => _model.SelectedCustomImageProfileId;
+            set => _model.SelectedCustomImageProfileId = value;
         }
 
         public string SelectedLlmModel
@@ -193,8 +209,8 @@ namespace WallTrek.Services
 
         public string? AnthropicApiKey
         {
-            get => _model.AnthropicApiKey;
-            set => _model.AnthropicApiKey = value;
+            get => ReadSecret("anthropic", _model.AnthropicApiKey);
+            set { StoreSecret("anthropic", value); _model.AnthropicApiKey = null; }
         }
 
         public string SelectedImageModel
@@ -265,20 +281,20 @@ namespace WallTrek.Services
 
         public string? GoogleApiKey
         {
-            get => _model.GoogleApiKey;
-            set => _model.GoogleApiKey = value;
+            get => ReadSecret("google", _model.GoogleApiKey);
+            set { StoreSecret("google", value); _model.GoogleApiKey = null; }
         }
 
         public string? StabilityApiKey
         {
-            get => _model.StabilityApiKey;
-            set => _model.StabilityApiKey = value;
+            get => ReadSecret("stability", _model.StabilityApiKey);
+            set { StoreSecret("stability", value); _model.StabilityApiKey = null; }
         }
 
         public string? FalApiKey
         {
-            get => _model.FalApiKey;
-            set => _model.FalApiKey = value;
+            get => ReadSecret("fal", _model.FalApiKey);
+            set { StoreSecret("fal", value); _model.FalApiKey = null; }
         }
 
         public int RandomWordCount
@@ -287,8 +303,64 @@ namespace WallTrek.Services
             set => _model.RandomWordCount = value;
         }
 
+        // Secret references are stable per-user; values are never written to settings.json.
+        private static readonly IProviderSecretStore Vault = new WindowsProviderSecretStore();
+        private static string? ReadSecret(string id, string? legacyValue) =>
+            Vault.Read("builtin:" + id) ?? legacyValue;
+        private static void StoreSecret(string id, string? value)
+        {
+            if (string.IsNullOrEmpty(value)) Vault.Delete("builtin:" + id);
+            else Vault.Write("builtin:" + id, value);
+        }
+
+        private bool MigrateLegacySecrets()
+        {
+            bool changed = false;
+            // Write all secrets first; only clear legacy fields after every vault write succeeds.
+            var legacy = new (string Id, string? Value)[]
+            {
+                ("openai", _model.ApiKey),
+                ("anthropic", _model.AnthropicApiKey),
+                ("google", _model.GoogleApiKey),
+                ("stability", _model.StabilityApiKey),
+                ("fal", _model.FalApiKey),
+                ("deviantart-client", _model.DeviantArtClientSecret),
+                ("deviantart-access", _model.DeviantArtAccessToken),
+                ("deviantart-refresh", _model.DeviantArtRefreshToken)
+            };
+            foreach (var (id, value) in legacy)
+                if (!string.IsNullOrEmpty(value)) { Vault.Write("builtin:" + id, value); changed = true; }
+            if (!changed) return false;
+            _model.ApiKey = null; _model.AnthropicApiKey = null;
+            _model.GoogleApiKey = null; _model.StabilityApiKey = null;
+            _model.FalApiKey = null; _model.DeviantArtClientSecret = null;
+            _model.DeviantArtAccessToken = null; _model.DeviantArtRefreshToken = null;
+            return true;
+        }
+
+
+        public bool CodexExperimentalEnabled
+        {
+            get => _model.CodexExperimentalEnabled;
+            set => _model.CodexExperimentalEnabled = value;
+        }
+
+        public string? CodexExecutablePath
+        {
+            get => _model.CodexExecutablePath;
+            set => _model.CodexExecutablePath = value;
+        }
+
+        public string? CodexHelperPath
+        {
+            get => _model.CodexHelperPath;
+            set => _model.CodexHelperPath = value;
+        }
+
         public void Save()
         {
+            if (_settingsRecoveryRequired)
+                throw new IOException("Settings could not be loaded or migrated. Original file preserved; resolve the storage problem before saving.");
             try
             {
                 Directory.CreateDirectory(Path.GetDirectoryName(SettingsPath)!);
@@ -298,11 +370,18 @@ namespace WallTrek.Services
                     TypeInfoResolver = SettingsJsonContext.Default
                 };
                 string jsonString = JsonSerializer.Serialize(_model, options);
-                File.WriteAllText(SettingsPath, jsonString);
+                var temp = SettingsPath + "." + Guid.NewGuid().ToString("N") + ".tmp";
+                try
+                {
+                    File.WriteAllText(temp, jsonString);
+                    File.Move(temp, SettingsPath, true);
+                }
+                finally { if (File.Exists(temp)) File.Delete(temp); }
             }
-            catch (Exception ex)
+            catch
             {
-                System.Diagnostics.Debug.WriteLine($"Error saving settings: {ex.Message}");
+                // Never swallow a failed security migration or credential/settings update.
+                throw new IOException("WallTrek settings could not be persisted.");
             }
         }
 
@@ -314,12 +393,15 @@ namespace WallTrek.Services
                 {
                     string jsonString = File.ReadAllText(SettingsPath);
                     _model = JsonSerializer.Deserialize(jsonString, SettingsJsonContext.Default.SettingsModel) ?? new SettingsModel();
+                    if (MigrateLegacySecrets()) Save();
                 }
             }
-            catch (Exception ex)
+            catch (Exception)
             {
-                System.Diagnostics.Debug.WriteLine($"Error loading settings: {ex.Message}");
-                _model = new SettingsModel();
+                // Keep deserialized legacy values in memory if vault migration failed.
+                // If parsing failed, preserve the unreadable disk file rather than replacing it.
+                _settingsRecoveryRequired = true;
+                System.Diagnostics.Debug.WriteLine("Settings load/migration failed: original settings file preserved; saving disabled.");
             }
         }
     }

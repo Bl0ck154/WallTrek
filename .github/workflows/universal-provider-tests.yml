@@ -1,0 +1,27 @@
+name: Universal provider checks
+on:
+  pull_request:
+    paths:
+      - 'Services/Providers/**'
+      - 'Services/ImageGen/**'
+      - 'Services/Settings.cs'
+      - 'Views/SettingsView.*'
+      - 'Views/MainView.xaml.cs'
+      - 'tests/WallTrek.Provider.Tests/**'
+      - 'WallTrek.csproj'
+      - '.github/workflows/universal-provider-tests.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  provider-tests:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Run isolated provider fake tests
+        run: dotnet run --project tests/WallTrek.Provider.Tests/WallTrek.Provider.Tests.csproj --configuration Release
+      - name: Compile WinUI and existing provider services
+        run: dotnet build WallTrek.csproj --configuration Debug

@@ -9,6 +9,8 @@ using System.Threading;
 using System.Threading.Tasks;
 using WallTrek.Services;
 using WallTrek.Services.ImageGen;
+using WallTrek.Services.Personalization;
+using WallTrek.Services.Providers;
 using WallTrek.Services.Profiles;
 using WallTrek.Services.TextGen;
 using WallTrek.Utilities;
@@ -51,6 +53,7 @@ namespace WallTrek.Views
             
             // Load saved prompt
             LoadSettings();
+            RefreshPersonalizationStatus();
             
             // Connect to auto-generate events
             AutoGenerateService.Instance.NextGenerateTimeUpdated += OnNextGenerateTimeUpdated;
@@ -207,7 +210,11 @@ namespace WallTrek.Views
                     token.ThrowIfCancellationRequested();
                     var batchLabel = count > 1 ? $" ({i + 1} of {count})" : "";
 
-                    if (randomPromptEachTime && !await GenerateRandomPromptCore(token, batchLabel))
+                    // Active scenarios already compose rotating prompts locally; don't pay
+                    // an LLM to generate a random prompt that would be discarded.
+                    if (randomPromptEachTime &&
+                        PersonalizationLibrary.Default.Snapshot().ActiveScenarioId is null &&
+                        !await GenerateRandomPromptCore(token, batchLabel))
                     {
                         // Soft failure (e.g. the model returned nothing) — status already set.
                         break;
@@ -258,6 +265,42 @@ namespace WallTrek.Views
             }
         }
 
+        private async void PersonalizationEditor_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                var dialog = new ContentDialog
+                {
+                    XamlRoot = XamlRoot, Title = "Personalized wallpapers",
+                    Content = new PersonalizationEditor(),
+                    CloseButtonText = "Close"
+                };
+                await dialog.ShowAsync();
+                RefreshPersonalizationStatus();
+            }
+            catch (Exception)
+            {
+                SetStatus("Unable to load personalization settings. Check local library files.",
+                    Microsoft.UI.Colors.OrangeRed);
+            }
+        }
+
+        private void RefreshPersonalizationStatus()
+        {
+            try
+            {
+                var state = PersonalizationLibrary.Default.Snapshot();
+                var scenario = state.Scenarios.FirstOrDefault(s => s.Id == state.ActiveScenarioId);
+                PersonalizationStatusText.Text = scenario is null
+                    ? "Off — original image generation"
+                    : $"Active: {scenario.Name} · {state.Photos.Count(p => p.Enabled)} reference(s)";
+            }
+            catch (Exception)
+            {
+                PersonalizationStatusText.Text = "Library unavailable";
+            }
+        }
+
         // Generates a single wallpaper from the current prompt and sets it as the desktop background.
         // The busy UI, cancellation token, and success notification are owned by the caller so this can
         // run repeatedly inside a batch. batchLabel is an optional " (n of m)" suffix for status text.
@@ -266,6 +309,10 @@ namespace WallTrek.Views
             // Save prompt when generating
             Settings.Instance.LastPrompt = PromptTextBox.Text;
             Settings.Instance.Save();
+
+            // Resolve the previewed scenario once. It advances ONLY after successful persistence.
+            var prepared = PersonalizationLibrary.Default.Prepare();
+            var resolvedPrompt = prepared?.FinalPrompt ?? PromptTextBox.Text;
 
             // Pick the models for this run. When multiple are checked, one is chosen at random.
             var selectedOption = PickImageModel();
@@ -281,17 +328,44 @@ namespace WallTrek.Views
                 throw new GenerationAbortedException("Please set your OpenAI API key in Settings first.", navigateToSettings: true);
             }
 
-            if (string.IsNullOrWhiteSpace(PromptTextBox.Text))
+            if (string.IsNullOrWhiteSpace(resolvedPrompt))
             {
-                throw new GenerationAbortedException("Please enter a prompt for your wallpaper.", navigateToSettings: false);
+                throw new GenerationAbortedException("Enter a prompt or activate a scenario.", navigateToSettings: false);
             }
 
             SetStatus($"Generating wallpaper{batchLabel}...", Microsoft.UI.Colors.DodgerBlue);
             Logger.Info($"Generating wallpaper — image: {selectedOption.Id}, LLM: {selectedLlm.ModelId}");
 
+            // Manually entered prompts can use a custom image host without a separate LLM API key.
+            if (prepared is null && _currentPromptGenerationResult == null &&
+                selectedOption.Provider == ImageProvider.CustomOpenAiCompatible)
+            {
+                _currentPromptGenerationResult = new PromptGenerationResult
+                {
+                    Prompt = PromptTextBox.Text,
+                    Title = "Custom Wallpaper",
+                    Tags = Array.Empty<string>(),
+                    LlmModelId = "manual-prompt"
+                };
+            }
+
+
+            // A manually entered Codex prompt needs no separate paid text-model API key.
+            // Keep the upstream title/tag generator unchanged for existing providers.
+            if (prepared is null && _currentPromptGenerationResult == null && selectedOption.Provider == ImageProvider.CodexExperimental)
+            {
+                _currentPromptGenerationResult = new PromptGenerationResult
+                {
+                    Prompt = PromptTextBox.Text,
+                    Title = "Codex Wallpaper",
+                    Tags = Array.Empty<string>(),
+                    LlmModelId = "codex-only"
+                };
+            }
+
             // If we don't have a cached prompt generation result (e.g., user typed their own prompt),
             // generate title and tags from the prompt
-            if (_currentPromptGenerationResult == null)
+            if (prepared is null && _currentPromptGenerationResult == null)
             {
                 SetStatus($"Generating title and tags{batchLabel}...", Microsoft.UI.Colors.DodgerBlue);
                 var titleService = new TitleService();
@@ -309,7 +383,7 @@ namespace WallTrek.Views
                 }
             }
 
-            if (_currentPromptGenerationResult == null)
+            if (prepared is null && _currentPromptGenerationResult == null)
             {
                 throw new GenerationAbortedException("Failed to generate title and tags.", navigateToSettings: false);
             }
@@ -317,11 +391,21 @@ namespace WallTrek.Views
             // Capture into a local. A PromptTextBox.TextChanged (raised deferred by WinUI) can fire
             // during the GenerateImage await below and null the field out from under us — e.g. when the
             // TextBox normalizes the prompt's line endings so its text no longer equals the cached Prompt.
-            var promptResult = _currentPromptGenerationResult;
+            var promptResult = prepared is null ? _currentPromptGenerationResult! :
+                new PromptGenerationResult
+                {
+                    Prompt = resolvedPrompt,
+                    Title = "Personalized Wallpaper",
+                    Tags = Array.Empty<string>(),
+                    LlmModelId = "scenario"
+                };
 
             SetStatus($"Generating wallpaper{batchLabel}...", Microsoft.UI.Colors.DodgerBlue);
 
-            var imageGenerator = ImageGenerationServiceFactory.CreateService(selectedOption);
+            // Personalized runs use the additive IImageProvider contract. Legacy workflows
+            // continue to use the existing OpenAI/Google factory without modification.
+            var imageGenerator = prepared is null
+                ? ImageGenerationServiceFactory.CreateService(selectedOption) : null;
 
             // Record the models actually used for this generation.
             var currentLlmModel = string.IsNullOrEmpty(promptResult.LlmModelId)
@@ -342,7 +426,13 @@ namespace WallTrek.Views
             var tags = promptResult.Tags.ToList();
 
             // Generate image
-            var result = await imageGenerator.GenerateImage(PromptTextBox.Text, token);
+            PersonalizedRenderResult? personalizedRender = null;
+            if (prepared is not null)
+                personalizedRender = await PersonalizedWallpaperRunner.RunAsync(
+                    selectedOption, prepared, PersonalizationLibrary.Default, token);
+            var result = personalizedRender?.Image ??
+                await imageGenerator!.GenerateImage(resolvedPrompt, token);
+            if (personalizedRender is not null) currentImgModel = personalizedRender.ModelId;
 
             // Upscale image (Stability AI) when a tier other than "None" is selected.
             var selectedUpscaler = UpscalerSelectionComboBox.SelectedItem as UpscalerOption
@@ -359,7 +449,7 @@ namespace WallTrek.Views
                 {
                     SetStatus($"Upscaling image ({selectedUpscaler.Name}){batchLabel}...", Microsoft.UI.Colors.DodgerBlue);
                     var upscaleService = new UpscaleService(Settings.Instance.StabilityApiKey);
-                    result.ImageData = await upscaleService.UpscaleImageAsync(result.ImageData, selectedUpscaler.Mode, PromptTextBox.Text, token);
+                    result.ImageData = await upscaleService.UpscaleImageAsync(result.ImageData, selectedUpscaler.Mode, resolvedPrompt, token);
                     tags.Add("stability_ai");
                     tags.Add("4k");
                 }
@@ -381,12 +471,24 @@ namespace WallTrek.Views
             var fileService = new FileService(Settings.Instance.OutputDirectory);
             var title = promptResult.Title;
             var tagString = string.Join(", ", tags);
-            var metadata = $"Title: {title}\nPrompt: {PromptTextBox.Text}\nTags: {tagString}";
+            var metadata = $"Title: {title}\nPrompt: {resolvedPrompt}\nTags: {tagString}";
             var filePath = fileService.SaveImageWithMetadata(result.ImageData, metadata, title);
 
             // Register in database
             var databaseService = new DatabaseService();
-            await databaseService.AddGeneratedImageAsync(filePath, currentLlmModel, currentImgModel, PromptTextBox.Text, title, tagString);
+            await databaseService.AddGeneratedImageAsync(filePath, currentLlmModel, currentImgModel,
+                resolvedPrompt, title, tagString);
+
+            if (prepared is not null)
+            {
+                var library = PersonalizationLibrary.Default;
+                var scene = library.Snapshot().Scenarios.Single(s => s.Id == prepared.ScenarioId);
+                await new PersonalizationHistory().RecordAsync(filePath, prepared,
+                    scene.Name, personalizedRender?.ProviderId ?? selectedOption.Provider.ToString(),
+                    currentImgModel, token);
+                library.CommitSuccess(prepared);
+                RefreshPersonalizationStatus();
+            }
 
             Wallpaper.Set(filePath);
         }
@@ -652,7 +754,14 @@ namespace WallTrek.Views
 
         // Re-reads the lists/selection (e.g., after returning from Settings, where profiles
         // and word lists may have been added, renamed, deleted, or re-selected).
-        public void RefreshProfileSelectors() => PopulateProfileSelectors();
+        public void RefreshProfileSelectors()
+        {
+            PopulateProfileSelectors();
+            // MainView survives Settings navigation: refresh image profiles without a restart.
+            ImageModelSelectionControl.ItemsSource = ImageModelCatalog.Options;
+            ImageModelSelectionControl.SetSelectedItems(ResolveImageSelection());
+            UpdateCostEstimate();
+        }
 
         private void CategoryProfileSelectionControl_SelectionChanged(object? sender, EventArgs e)
         {
@@ -742,13 +851,24 @@ namespace WallTrek.Views
 
             decimal total = llmCents + imgCents + up.Cents;
 
-            RandomImageButton.Content = $"Random Image  (~{total:0}¢)";
+            bool unknownImagePrice = imgSelected.Any(o => o.Provider is ImageProvider.CustomOpenAiCompatible or ImageProvider.CodexExperimental);
+            RandomImageButton.Content = unknownImagePrice
+                ? "Random Image (provider quota / image price unknown)"
+                : $"Random Image  (~{total:0}¢)";
             var callDetail = promptCalls > 1m ? $" (~{promptCalls:0.#} calls)" : string.Empty;
-            CostEstimateTextBlock.Text = $"≈ {llmCents:0.#}¢ prompt{callDetail} + {imgCents:0.#}¢ image + {up.Cents:0.#}¢ upscale";
+            CostEstimateTextBlock.Text = unknownImagePrice
+                ? $"≈ {llmCents:0.#}¢ prompt{callDetail} + unknown provider image cost / account quota + {up.Cents:0.#}¢ upscale"
+                : $"≈ {llmCents:0.#}¢ prompt{callDetail} + {imgCents:0.#}¢ image + {up.Cents:0.#}¢ upscale";
         }
 
         private decimal GetExpectedPromptCallCount()
         {
+            try
+            {
+                if (PersonalizationLibrary.Default.Snapshot().ActiveScenarioId is not null)
+                    return 0m; // Deterministic local scenario, no LLM call.
+            }
+            catch (InvalidDataException) { } // Allow settings page to show corruption separately.
             if (IterativePromptCheckBox.IsChecked != true)
             {
                 return 1m;

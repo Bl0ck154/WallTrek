@@ -154,6 +154,12 @@
                      KeyDown="PromptTextBox_KeyDown"
                      TextChanged="PromptTextBox_TextChanged"/>
             
+            <StackPanel Orientation="Horizontal" Spacing="10">
+                <Button Content="Personalize: photos &amp; scenarios" Click="PersonalizationEditor_Click"/>
+                <TextBlock x:Name="PersonalizationStatusText" Text="Personalization off"
+                           VerticalAlignment="Center" TextWrapping="Wrap"/>
+            </StackPanel>
+
             <ItemsControl x:Name="PropertiesBadgesControl" Margin="0,0,0,8">
                 <ItemsControl.ItemsPanel>
                     <ItemsPanelTemplate>
