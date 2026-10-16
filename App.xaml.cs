@@ -17,6 +17,7 @@ using Windows.ApplicationModel.Activation;
 using Windows.Foundation;
 using Windows.Foundation.Collections;
 using WallTrek.Services;
+using WallTrek.Services.Scheduling;
 using WallTrek.Utilities;
 using System.Windows.Input;
 using H.NotifyIcon;
@@ -118,19 +119,41 @@ namespace WallTrek
                 Settings.Instance.Save();
             }
             
-            // Connect auto-generate events
-            AutoGenerateService.Instance.AutoGenerateTriggered += OnAutoGenerateTriggered;
-            
-            // Initialize auto-generate service based on current settings
+            // Dispatch scheduled work onto WinUI and AWAIT actual application result.
+            // No async-void fire-and-forget path can mark a failed image as successful.
+            AutoGenerateService.Instance.SetExecutionHandler(ExecuteScheduledWallpaperAsync);
             AutoGenerateService.Instance.RefreshFromSettings();
         }
         
-        private void OnAutoGenerateTriggered(object? sender, EventArgs e)
+        private Task<ScheduledRunOutcome> ExecuteScheduledWallpaperAsync(CancellationToken token)
         {
-            if (_window != null)
+            var window = _window;
+            if (window is null || token.IsCancellationRequested)
+                return Task.FromResult(ScheduledRunOutcome.Busy);
+            var signal = new TaskCompletionSource<ScheduledRunOutcome>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            var queued = window.DispatcherQueue.TryEnqueue(async () =>
             {
-                _window.DispatcherQueue.TryEnqueue(() => _window.TriggerAutoGenerate());
-            }
+                if (token.IsCancellationRequested)
+                {
+                    signal.TrySetResult(ScheduledRunOutcome.Busy);
+                    return;
+                }
+                try
+                {
+                    signal.TrySetResult(await window.TriggerAutoGenerateAsync(token));
+                }
+                catch (OperationCanceledException)
+                {
+                    signal.TrySetResult(ScheduledRunOutcome.Failed);
+                }
+                catch (Exception)
+                {
+                    signal.TrySetResult(ScheduledRunOutcome.Failed);
+                }
+            });
+            if (!queued) signal.TrySetResult(ScheduledRunOutcome.Busy);
+            return signal.Task;
         }
         
         private void ImFeelingLucky()
