@@ -64,6 +64,11 @@
     </Compile>
   </ItemGroup>
 
+  <!-- Test project is built separately; keep its entry point out of the WinUI app. -->
+  <ItemGroup>
+    <Compile Remove="tests\\**\\*.cs" />
+  </ItemGroup>
+
   <ItemGroup>
     <PackageReference Include="Anthropic.SDK" Version="5.10.0" />
     <PackageReference Include="CommunityToolkit.WinUI.Controls.Primitives" Version="8.2.251219" />
