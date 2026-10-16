@@ -71,9 +71,11 @@ public sealed class OpenAiCompatibleProvider : IImageProvider
             throw new ProviderException(ProviderFailure.InvalidConfiguration);
         if (!edit && references.Count != 0)
             throw new ProviderException(ProviderFailure.UnsupportedOperation);
-        string prompt = references.Any(r => r.Role == ProviderReferenceRole.Identity)
-            ? "Preserve the recognizable facial identity and physical features of the person in the identity reference. " + request.Prompt
-            : request.Prompt;
+        string prompt = request.Prompt;
+        if (references.Any(r => r.Role == ProviderReferenceRole.Style))
+            prompt = "Use the style reference for aesthetic style only, not identity or content. " + prompt;
+        if (references.Any(r => r.Role == ProviderReferenceRole.Identity))
+            prompt = "Preserve the recognizable facial identity and physical features of the person in the identity reference. " + prompt;
         var model = edit
             ? string.IsNullOrWhiteSpace(_profile.EditModel) ? _profile.ImageModel : _profile.EditModel
             : _profile.ImageModel;
@@ -93,7 +95,8 @@ public sealed class OpenAiCompatibleProvider : IImageProvider
             form.Add(new StringContent(prompt), "prompt");
             if (!string.IsNullOrWhiteSpace(request.Size)) form.Add(new StringContent(request.Size), "size");
             if (!string.IsNullOrWhiteSpace(request.Quality)) form.Add(new StringContent(request.Quality), "quality");
-            foreach (var reference in references)
+            // Preserve semantic order: identity/content first, style-only reference last.
+            foreach (var reference in references.OrderBy(r => r.Role == ProviderReferenceRole.Style ? 1 : 0))
             {
                 if (reference.Bytes.Length is < 16 or > 20 * 1024 * 1024)
                     throw new ProviderException(ProviderFailure.InvalidImage);
