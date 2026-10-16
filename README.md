@@ -1,6 +1,6 @@
 # WallTrek
 
-WallTrek is a WinUI 3 application that generates AI-powered wallpapers using multiple AI providers (OpenAI GPT Image, Google Imagen & Gemini). The application runs in the system tray and can automatically generate and set new wallpapers at specified intervals with customizable random prompt elements.
+> **This fork's planned direction:** daily AI wallpapers using personal photo references and user-written scenarios, configurable OpenAI-compatible custom API hosts, and an **experimental** local Codex-login adapter (subject to feasibility/security review). These are **planned features**, not shipped yet. See the [implementation roadmap](docs/ROADMAP.md), [custom provider architecture](docs/PROVIDER_ARCHITECTURE.md), and [Codex integration design](docs/CODEX_INTEGRATION.md).\n\nWallTrek is a WinUI 3 application that generates AI-powered wallpapers using multiple AI providers (OpenAI GPT Image, Google Imagen & Gemini). The application runs in the system tray and can automatically generate and set new wallpapers at specified intervals with customizable random prompt elements.
 
 [Example Generated Wallpapers](https://www.deviantart.com/swaxtastic/gallery/all)
 
