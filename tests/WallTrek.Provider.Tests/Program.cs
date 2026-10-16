@@ -196,7 +196,9 @@ static async Task Edits()
             Check(req.Content is MultipartFormDataContent, "not multipart");
             var body = await req.Content!.ReadAsStringAsync(ct);
             Check(body.Contains("edit-model-test") && body.Contains("Keep person"), "edit model/prompt absent");
-            Check(body.Contains(shape == ProviderEditShape.Image ? "name=\"image\"" : "name=\"image[]\""), "wrong multipart field");
+            Check(body.Contains(shape == ProviderEditShape.Image ? "name=image" : "name=image[]") ||
+                  body.Contains(shape == ProviderEditShape.Image ? "name=\"image\"" : "name=\"image[]\""),
+                  "wrong multipart field");
             return OkImage();
         });
         var refs = new[] { new ProviderImageReference(Fixtures.ValidPng, "portrait.png", ProviderReferenceRole.Identity) };
