@@ -100,6 +100,10 @@ namespace WallTrek.Services
         public static Settings Instance { get; private set; } = new Settings();
 
         private SettingsModel _model = new();
+        private bool _settingsRecoveryRequired;
+
+        // Never overwrite an unreadable or partially migrated settings file with defaults.
+        public bool SettingsRecoveryRequired => _settingsRecoveryRequired;
 
         public string? ApiKey
         {
@@ -355,6 +359,8 @@ namespace WallTrek.Services
 
         public void Save()
         {
+            if (_settingsRecoveryRequired)
+                throw new IOException("Settings could not be loaded or migrated. Original file preserved; resolve the storage problem before saving.");
             try
             {
                 Directory.CreateDirectory(Path.GetDirectoryName(SettingsPath)!);
@@ -390,10 +396,12 @@ namespace WallTrek.Services
                     if (MigrateLegacySecrets()) Save();
                 }
             }
-            catch (Exception ex)
+            catch (Exception)
             {
-                System.Diagnostics.Debug.WriteLine($"Error loading settings: {ex.Message}");
-                _model = new SettingsModel();
+                // Keep deserialized legacy values in memory if vault migration failed.
+                // If parsing failed, preserve the unreadable disk file rather than replacing it.
+                _settingsRecoveryRequired = true;
+                System.Diagnostics.Debug.WriteLine("Settings load/migration failed: original settings file preserved; saving disabled.");
             }
         }
     }
