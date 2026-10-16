@@ -27,8 +27,7 @@ foreach (var (name, test) in tests)
 }
 Environment.ExitCode = failed > 0 ? 1 : 0;
 
-static readonly byte[] ValidPng = Convert.FromBase64String(
-    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/xU4AAAAASUVORK5CYII=");
+
 
 static ProviderProfile Profile(string host = "https://example.test/v1") => new()
 {
@@ -46,7 +45,7 @@ static HttpResponseMessage OkImage() => new(HttpStatusCode.OK)
 {
     Content = new StringContent(JsonSerializer.Serialize(new
     {
-        data = new[] { new { b64_json = Convert.ToBase64String(ValidPng) } }
+        data = new[] { new { b64_json = Convert.ToBase64String(Fixtures.ValidPng) } }
     }), Encoding.UTF8, "application/json")
 };
 static HttpClient Client(Func<HttpRequestMessage, CancellationToken, Task<HttpResponseMessage>> fn) =>
@@ -141,7 +140,7 @@ static async Task UrlImage()
             { Content = new StringContent("{\"data\":[{\"url\":\"https://example.test/signed/image.png?token=opaque\"}]}", Encoding.UTF8, "application/json") });
         Check(req.Method == HttpMethod.Get && req.RequestUri!.AbsolutePath == "/signed/image.png", "image fetch");
         Check(req.Headers.Authorization is null && !req.Headers.Contains("x-api-key"), "key leaked into image GET");
-        return Respond(new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(ValidPng) });
+        return Respond(new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(Fixtures.ValidPng) });
     });
     var result = await new OpenAiCompatibleProvider(Profile(), new FakeSecrets(), http, "KEY")
         .GenerateAsync(new("lake"));
@@ -180,7 +179,7 @@ static async Task Edits()
             Check(body.Contains(shape == ProviderEditShape.Image ? "name=\"image\"" : "name=\"image[]\""), "wrong multipart field");
             return OkImage();
         });
-        var refs = new[] { new ProviderImageReference(ValidPng, "portrait.png", ProviderReferenceRole.Identity) };
+        var refs = new[] { new ProviderImageReference(Fixtures.ValidPng, "portrait.png", ProviderReferenceRole.Identity) };
         var result = await new OpenAiCompatibleProvider(p, new FakeSecrets(), http, "KEY")
             .EditAsync(new ProviderImageRequest("Keep person", refs));
         Check(result.Width == 1, "edit returned invalid result");
@@ -192,7 +191,7 @@ static async Task UnsupportedRefs()
     p.EnableEdits = false;
     using var http = Client((req, ct) => throw new Exception("Network should not run"));
     var provider = new OpenAiCompatibleProvider(p, new FakeSecrets(), http, "KEY");
-    var refs = new[] { new ProviderImageReference(ValidPng, "x.png", ProviderReferenceRole.Content) };
+    var refs = new[] { new ProviderImageReference(Fixtures.ValidPng, "x.png", ProviderReferenceRole.Content) };
     await Expect(ProviderFailure.UnsupportedOperation, () =>
         provider.GenerateAsync(new ProviderImageRequest("ref", refs)));
     await Expect(ProviderFailure.UnsupportedOperation, () =>
@@ -270,4 +269,10 @@ sealed class FakeSecrets : IProviderSecretStore
     public string? Read(string id) => _values.GetValueOrDefault(id);
     public void Write(string id, string value) => _values[id] = value;
     public void Delete(string id) => _values.Remove(id);
+}
+
+static class Fixtures
+{
+    public static readonly byte[] ValidPng = Convert.FromBase64String(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/xU4AAAAASUVORK5CYII=");
 }
