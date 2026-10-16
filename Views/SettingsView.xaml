@@ -118,6 +118,8 @@
                                 <Button Content="Test real generation (uses quota)" Click="CodexGenerateTestButton_Click" />
                                 <Button Content="Test real edit (uploads reference; uses quota)" Click="CodexEditTestButton_Click" />
                             </StackPanel>
+                            <Image x:Name="CodexTestPreview" MaxWidth="540" Height="260"
+                                   Stretch="Uniform" HorizontalAlignment="Left" />
                             <TextBlock x:Name="CodexProbeResultTextBlock" TextWrapping="Wrap" MaxWidth="600"
                                        Text="Login status does not prove image-generation availability. Only successful real tests verify this helper/account combination." />
                         </StackPanel>
