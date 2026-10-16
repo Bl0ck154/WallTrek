@@ -8,9 +8,11 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="Program.cs"/>
+    <Compile Include="../../Services/Providers/WindowsProviderSecretStore.cs" Link="WindowsProviderSecretStore.cs"/>
     <Compile Include="../../Services/Providers/ProviderContracts.cs" Link="ProviderContracts.cs"/>
     <Compile Include="../../Services/Providers/ProviderProfileStore.cs" Link="ProviderProfileStore.cs"/>
     <Compile Include="../../Services/Providers/ProviderImageValidator.cs" Link="ProviderImageValidator.cs"/>
     <Compile Include="../../Services/Providers/OpenAiCompatibleProvider.cs" Link="OpenAiCompatibleProvider.cs"/>
   </ItemGroup>
+  <ItemGroup><PackageReference Include="System.Security.Cryptography.ProtectedData" Version="10.0.8"/></ItemGroup>
 </Project>
