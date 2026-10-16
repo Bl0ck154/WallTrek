@@ -72,7 +72,14 @@
                     <CheckBox x:Name="ConfirmUpload" Content="I consent to uploading sanitized photos to the selected provider (host shown above)"/>
                     <Button Content="Approve these photos for this provider" Click="ApproveDestination_Click"
                             HorizontalAlignment="Left"/>
-                    <TextBlock TextWrapping="Wrap" Text="Consent is bound to the provider host and the current photos/roles. Switching hosts or changing photos needs new approval. No automatic vendor fallback."/>
+                    <TextBlock TextWrapping="Wrap" Text="Codex (experimental) sends sanitized photos to ChatGPT through an unofficial helper. The helper reads your existing local Codex login, uses undocumented endpoints and may consume account quota. WallTrek does not copy tokens. The helper supports at most one style photo plus an identity/content photo. Local sign-in alone does not prove image access."/>
+                    <Button Content="Check Codex login/helper (no image generated)" Click="ProbeCodex_Click"
+                            HorizontalAlignment="Left"/>
+                    <Button Content="Test Codex edit with approved photos (uses account quota)"
+                            Click="TestCodexEdit_Click" HorizontalAlignment="Left"/>
+                    <Image x:Name="CodexEditPreview" MaxHeight="200" MaxWidth="420"
+                           Stretch="Uniform" HorizontalAlignment="Left"/>
+                    <TextBlock TextWrapping="Wrap" Text="Consent is bound to the selected scenario, photo roles/IDs and exact destination origin. Switching the destination requires approval. No automatic vendor fallback."/>
                 </StackPanel>
             </Expander>
             <Expander Header="Recent personalized wallpaper history">
