@@ -139,13 +139,6 @@ static Task Consent()
     finally { Directory.Delete(dir, true); }
     return Task.CompletedTask;
 }
-static byte[] SamplePng()
-{
-    using var bitmap = new Bitmap(64, 64);
-    using var buffer = new MemoryStream();
-    bitmap.Save(buffer, ImageFormat.Png);
-    return buffer.ToArray();
-}
 static async Task EditContract()
 {
     var photo = new ReferencePhoto { Role = ReferenceRole.Identity };
@@ -159,10 +152,10 @@ static async Task EditContract()
             Check(request.References?.Count == 1, "reference silently omitted");
             Check(request.References![0].Role == ProviderReferenceRole.Identity, "identity role omitted");
             Check(request.Prompt.Contains("Preserve the recognizable identity"), "identity guard omitted");
-            return Task.FromResult(new ProviderImageResult(SamplePng(), "image/png", 64, 64, "fake", "edit"));
+            return Task.FromResult(new ProviderImageResult(Fixtures.SamplePng(), "image/png", 64, 64, "fake", "edit"));
         });
     var result = await coordinator.GenerateAsync(prepared,
-        new[] { new ProviderImageReference(SamplePng(), "photo.png", ProviderReferenceRole.Identity) });
+        new[] { new ProviderImageReference(Fixtures.SamplePng(), "photo.png", ProviderReferenceRole.Identity) });
     Check(result.ImageData.Length > 0 && edits == 1 && generator.GenerateCount == 0, "edit not routed separately");
 }
 static async Task EditUnsupported()
@@ -173,7 +166,7 @@ static async Task EditUnsupported()
     try
     {
         await new PersonalizedGenerationCoordinator(fake).GenerateAsync(prepared,
-            new[] { new ProviderImageReference(SamplePng(), "photo.png", ProviderReferenceRole.Identity) });
+            new[] { new ProviderImageReference(Fixtures.SamplePng(), "photo.png", ProviderReferenceRole.Identity) });
         throw new Exception("unsupported edit accepted");
     }
     catch (ProviderException ex) when (ex.Reason == ProviderFailure.UnsupportedOperation) { }
@@ -204,6 +197,17 @@ sealed class FakeProvider : IImageProvider
     public Task<ProviderImageResult> GenerateAsync(ProviderImageRequest request, CancellationToken ct = default)
     {
         GenerateCount++;
-        return Task.FromResult(new ProviderImageResult(SamplePng(), "image/png", 64, 64, "fake", "gen"));
+        return Task.FromResult(new ProviderImageResult(Fixtures.SamplePng(), "image/png", 64, 64, "fake", "gen"));
     }
+}
+
+static class Fixtures
+{
+public static byte[] SamplePng()
+{
+    using var bitmap = new Bitmap(64, 64);
+    using var buffer = new MemoryStream();
+    bitmap.Save(buffer, ImageFormat.Png);
+    return buffer.ToArray();
+}
 }
