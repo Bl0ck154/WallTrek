@@ -3,7 +3,8 @@ namespace WallTrek.Services.ImageGen
     public enum ImageProvider
     {
         OpenAI,
-        Google
+        Google,
+        CustomOpenAiCompatible
     }
 
     /// <summary>
