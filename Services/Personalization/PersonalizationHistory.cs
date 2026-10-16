@@ -32,6 +32,27 @@ public sealed class PersonalizationHistory
             CREATE INDEX IF NOT EXISTS IX_PersonalizedRuns_Date
             ON PersonalizedRuns (GeneratedUtc DESC);";
         command.ExecuteNonQuery();
+
+        // Keep the additional provenance in sync with upstream history archive,
+        // restore and delete operations without changing DatabaseService itself.
+        using var check = db.CreateCommand();
+        check.CommandText = "SELECT 1 FROM sqlite_master WHERE type='table' AND name='GeneratedImages'";
+        if (check.ExecuteScalar() is not null)
+        {
+            using var triggers = db.CreateCommand();
+            triggers.CommandText = @"
+                CREATE TRIGGER IF NOT EXISTS trg_PersonalizationImageMoved
+                AFTER UPDATE OF ImagePath ON GeneratedImages
+                BEGIN
+                  UPDATE PersonalizedRuns SET ImagePath = NEW.ImagePath WHERE ImagePath = OLD.ImagePath;
+                END;
+                CREATE TRIGGER IF NOT EXISTS trg_PersonalizationImageDeleted
+                AFTER DELETE ON GeneratedImages
+                BEGIN
+                  DELETE FROM PersonalizedRuns WHERE ImagePath = OLD.ImagePath;
+                END;";
+            triggers.ExecuteNonQuery();
+        }
     }
 
     public async Task RecordAsync(string imagePath, PreparedWallpaper prepared,
