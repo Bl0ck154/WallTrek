@@ -42,11 +42,13 @@ DeviantArt was chosen as the sharing platform because it supports API uploads wi
 
 ## Installation
 
-### Option 1: Download Pre-built Release (Recommended)
+### Option 1: Install this fork's Windows test build
 
-1. Download the latest release from [Releases](https://github.com/swax/WallTrek/releases)
-2. Unzip the contents to your desired location
-3. Run `WallTrek.exe`
+1. Open the [Windows installer run](https://github.com/Bl0ck154/WallTrek/actions/runs/38901774284).
+2. Under **Artifacts**, download `WallTrek-Windows-x64-Installer-test`, extract the single setup EXE from the GitHub ZIP wrapper.
+3. Run `WallTrek-Windows-x64-Setup.exe` and launch WallTrek from the Start menu. The installer is unsigned; verify its GitHub origin first.
+
+This test installer packages .NET 10 and Windows App SDK dependencies in the installed application directory instead of scattering them in the download folder. Its size primarily reflects bundled runtimes. See [Windows handoff](docs/WINDOWS_HANDOFF.md) for test steps. Releases from upstream do **not** include this fork's photo scenarios or scheduler.
 
 ### Option 2: Build from Source
 
