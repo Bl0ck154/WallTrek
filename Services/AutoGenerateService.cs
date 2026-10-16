@@ -31,7 +31,18 @@ namespace WallTrek.Services
         {
             Stop();
             var settings = Settings.Instance;
-            if (!settings.AutoGenerateEnabled) return;
+            if (!settings.AutoGenerateEnabled)
+            {
+                // Preserve previous interval-mode semantics: disabling auto mode clears
+                // an obsolete next-run timestamp so reenabling starts a fresh interval.
+                if (settings.AutoGenerateMode == "interval" &&
+                    settings.NextAutoGenerateTime.HasValue)
+                {
+                    settings.NextAutoGenerateTime = null;
+                    settings.Save();
+                }
+                return;
+            }
             if (settings.AutoGenerateMode == "daily")
             {
                 // Validate before starting background tasks or touching journal files.
