@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Program.cs"/>
+    <Compile Include="TestCompatibilityStubs.cs"/>
+    <Compile Include="../../Services/Personalization/PersonalizationModels.cs" Link="PersonalizationModels.cs"/>
+    <Compile Include="../../Services/Personalization/PersonalizationLibrary.cs" Link="PersonalizationLibrary.cs"/>
+    <Compile Include="../../Services/Personalization/PersonalizedGenerationCoordinator.cs" Link="PersonalizedGenerationCoordinator.cs"/>
+    <Compile Include="../../Services/Personalization/PersonalizedWallpaperRunner.cs" Link="PersonalizedWallpaperRunner.cs"/>
+    <Compile Include="../../Services/Personalization/CodexPersonalizedImageProvider.cs" Link="CodexPersonalizedImageProvider.cs"/>
+    <Compile Include="../../Services/Providers/ProviderContracts.cs" Link="ProviderContracts.cs"/>
+    <Compile Include="../../Services/Providers/ProviderImageValidator.cs" Link="ProviderImageValidator.cs"/>
+    <Compile Include="../../Services/ImageGen/Codex/CodexImageBridge.cs" Link="CodexImageBridge.cs"/>
+    <Compile Include="../../Services/ImageGen/Codex/CodexProcessRunner.cs" Link="CodexProcessRunner.cs"/>
+    <Compile Include="../../Services/ImageGen/IImageGenerationService.cs" Link="IImageGenerationService.cs"/>
+    <Compile Include="../../Services/ImageGen/ImageModelOption.cs" Link="ImageModelOption.cs"/>
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="System.Drawing.Common" Version="10.0.8"/>
+    <PackageReference Include="System.IO.FileSystem.AccessControl" Version="5.0.0"/>
+  </ItemGroup>
+</Project>

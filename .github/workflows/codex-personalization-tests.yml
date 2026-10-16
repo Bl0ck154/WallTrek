@@ -1,0 +1,31 @@
+name: Codex personalized reference integration
+on:
+  pull_request:
+    paths:
+      - 'Services/Personalization/CodexPersonalizedImageProvider.cs'
+      - 'Services/Personalization/PersonalizedWallpaperRunner.cs'
+      - 'Views/PersonalizationEditor.xaml'
+      - 'Views/PersonalizationEditor.xaml.cs'
+      - 'tests/WallTrek.CodexPersonalization.Tests/**'
+      - 'WallTrek.csproj'
+      - '.github/workflows/codex-personalization-tests.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  codex-personalization:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Offline Codex reference/edit + consent tests (no account, no private photos)
+        run: dotnet run --project tests/WallTrek.CodexPersonalization.Tests/WallTrek.CodexPersonalization.Tests.csproj -c Release
+      - name: Run existing personalization scenario tests
+        run: dotnet run --project tests/WallTrek.Personalization.Tests/WallTrek.Personalization.Tests.csproj -c Release
+      - name: Run existing Codex bridge fake-process tests
+        run: dotnet run --project tests/WallTrek.Codex.Tests/WallTrek.Codex.Tests.csproj -c Release
+      - name: Compile WinUI application
+        run: dotnet build WallTrek.csproj -c Debug
