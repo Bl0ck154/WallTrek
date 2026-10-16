@@ -16,7 +16,7 @@ namespace WallTrek.Services
         const int SPIF_UPDATEINIFILE = 0x01;
         const int SPIF_SENDWININICHANGE = 0x02;
 
-        [DllImport("user32.dll", CharSet = CharSet.Auto)]
+        [DllImport("user32.dll", CharSet = CharSet.Auto, SetLastError = true)]
         static extern int SystemParametersInfo(int uAction, int uParam, string lpvParam, int fuWinIni);
 
 
@@ -48,10 +48,12 @@ namespace WallTrek.Services
             key.SetValue(@"WallpaperStyle", "10"); // Fill
             key.SetValue(@"TileWallpaper", "0");
 
-            SystemParametersInfo(SPI_SETDESKWALLPAPER,
-                0,
-                wpaper,
-                SPIF_UPDATEINIFILE | SPIF_SENDWININICHANGE);
+            // A failed SPI call must not mark a scheduled wallpaper as applied.
+            // The existing wallpaper remains unchanged when Win32 rejects the new path.
+            if (SystemParametersInfo(SPI_SETDESKWALLPAPER,
+                    0, wpaper, SPIF_UPDATEINIFILE | SPIF_SENDWININICHANGE) == 0)
+                throw new System.ComponentModel.Win32Exception(
+                    Marshal.GetLastWin32Error(), "Windows failed to apply wallpaper.");
         }
     }
 }
