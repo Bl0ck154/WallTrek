@@ -24,7 +24,7 @@ var failed = 0;
 foreach (var (name, test) in tests)
 {
     try { await test(); Console.WriteLine("PASS " + name); }
-    catch (Exception ex) { failed++; Console.Error.WriteLine("FAIL " + name + ": " + ex.GetType().Name); }
+    catch (Exception ex) { failed++; Console.Error.WriteLine("FAIL " + name + ": " + ex.GetType().Name + " / " + ex.Message); }
 }
 Environment.ExitCode = failed > 0 ? 1 : 0;
 
