@@ -66,7 +66,7 @@ namespace WallTrek.Services.ImageGen
         {
             IReadOnlyList<ProviderProfile> profiles;
             try { profiles = ProviderProfileStore.Default.List(); }
-            catch (Exception ex) when (ex is IOException or InvalidDataException or ProviderException)
+            catch (Exception ex) when (ex is IOException or InvalidDataException or ProviderException or TypeInitializationException)
             {
                 // Damaged custom config must not break legacy OpenAI/Google startup.
                 return Array.Empty<ImageModelOption>();
