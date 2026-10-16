@@ -42,13 +42,13 @@ DeviantArt was chosen as the sharing platform because it supports API uploads wi
 
 ## Installation
 
-### Option 1: Install this fork's Windows test build
+### Option 1: Run this fork's portable Windows build (no installer)
 
-1. Open the [Windows installer run](https://github.com/Bl0ck154/WallTrek/actions/runs/38901774284).
-2. Under **Artifacts**, download `WallTrek-Windows-x64-Installer-test`, extract the single setup EXE from the GitHub ZIP wrapper.
-3. Run `WallTrek-Windows-x64-Setup.exe` and launch WallTrek from the Start menu. The installer is unsigned; verify its GitHub origin first.
+1. Open the [portable Windows build workflow](https://github.com/Bl0ck154/WallTrek/actions/workflows/windows-portable-test-build.yml).
+2. Download the most recent successful `WallTrek-Portable-Windows-x64` artifact from a `main` run.
+3. Extract the single top-level `WallTrek` folder somewhere writable under your user profile. Open it and run `WallTrek.exe`.
 
-This test installer packages .NET 10 and Windows App SDK dependencies in the installed application directory instead of scattering them in the download folder. Its size primarily reflects bundled runtimes. See [Windows handoff](docs/WINDOWS_HANDOFF.md) for test steps. Releases from upstream do **not** include this fork's photo scenarios or scheduler.
+To update, quit WallTrek from the system tray, then copy the newest application files into the same folder. **Do not run an installer or write to Program Files.** Internal .NET and Windows App SDK DLLs are included inside the portable folder so no development tools are required. See [Windows portable handoff](docs/WINDOWS_HANDOFF.md).
 
 ### Option 2: Build from Source
 
