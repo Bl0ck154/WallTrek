@@ -7,6 +7,7 @@ using WallTrek.Services.Providers;
 var tests = new (string Name, Func<Task> Run)[]
 {
     ("Profiles and secrets remain separate", Profiles),
+    ("Windows DPAPI vault encrypts and roundtrips", WindowsVault),
     ("Base path /v1 and Bearer auth", Generation),
     ("x-api-key isolated by profile", ApiKeys),
     ("Model connection probe is not an image capability test", Probe),
@@ -73,6 +74,25 @@ static Task Profiles()
         Check(store.Find(a.Id) is null && vault.Read(a.SecretReference) is null, "deletion failed");
         var reloaded = new ProviderProfileStore(vault, Path.Combine(temp, "providers.json"));
         Check(reloaded.List().Count == 1, "profile persistence broken");
+    }
+    finally { Directory.Delete(temp, true); }
+    return Task.CompletedTask;
+}
+
+static Task WindowsVault()
+{
+    var temp = Path.Combine(Path.GetTempPath(), "walltrek-dpapi-" + Guid.NewGuid().ToString("N"));
+    Directory.CreateDirectory(temp);
+    try
+    {
+        var vault = new WindowsProviderSecretStore(temp);
+        vault.Write("test:dpapi:current-user", "CANARY-PRIVATE-KEY-2026");
+        Check(vault.Read("test:dpapi:current-user") == "CANARY-PRIVATE-KEY-2026", "DPAPI roundtrip");
+        var onDisk = Directory.GetFiles(temp).Single();
+        var bytes = File.ReadAllBytes(onDisk);
+        Check(!Encoding.UTF8.GetString(bytes).Contains("CANARY-PRIVATE-KEY-2026"), "plaintext secret on disk");
+        vault.Delete("test:dpapi:current-user");
+        Check(vault.Read("test:dpapi:current-user") is null, "DPAPI delete");
     }
     finally { Directory.Delete(temp, true); }
     return Task.CompletedTask;
