@@ -210,7 +210,11 @@ namespace WallTrek.Views
                     token.ThrowIfCancellationRequested();
                     var batchLabel = count > 1 ? $" ({i + 1} of {count})" : "";
 
-                    if (randomPromptEachTime && !await GenerateRandomPromptCore(token, batchLabel))
+                    // Active scenarios already compose rotating prompts locally; don't pay
+                    // an LLM to generate a random prompt that would be discarded.
+                    if (randomPromptEachTime &&
+                        PersonalizationLibrary.Default.Snapshot().ActiveScenarioId is null &&
+                        !await GenerateRandomPromptCore(token, batchLabel))
                     {
                         // Soft failure (e.g. the model returned nothing) — status already set.
                         break;
@@ -845,6 +849,12 @@ namespace WallTrek.Views
 
         private decimal GetExpectedPromptCallCount()
         {
+            try
+            {
+                if (PersonalizationLibrary.Default.Snapshot().ActiveScenarioId is not null)
+                    return 0m; // Deterministic local scenario, no LLM call.
+            }
+            catch (InvalidDataException) { } // Allow settings page to show corruption separately.
             if (IterativePromptCheckBox.IsChecked != true)
             {
                 return 1m;
