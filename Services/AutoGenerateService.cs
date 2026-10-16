@@ -1,126 +1,80 @@
-using System;
-using System.Threading.Tasks;
-using Microsoft.UI.Dispatching;
+using WallTrek.Services.Scheduling;
 
 namespace WallTrek.Services
 {
-    public class AutoGenerateService
+    /// <summary>
+    /// App-resident, background ThreadPool scheduler, independent of the WinUI display timer.
+    /// Windows startup registration resumes the app after user sign-in; after sleep, a
+    /// 30-second wall-clock check catches missed due slots. Sleeping PCs are not woken.
+    /// </summary>
+    public sealed class AutoGenerateService
     {
-        private static AutoGenerateService? _instance;
-        private static readonly object _lock = new object();
-        
-        public static AutoGenerateService Instance 
-        { 
-            get 
-            { 
-                if (_instance == null) 
-                { 
-                    lock (_lock) 
-                    { 
-                        if (_instance == null) 
-                            _instance = new AutoGenerateService(); 
-                    } 
-                } 
-                return _instance; 
-            } 
-        }
-
-        private DispatcherQueueTimer? pollTimer;
-        private readonly DispatcherQueue dispatcherQueue;
+        public static AutoGenerateService Instance { get; } = new();
+        private readonly object _guard = new();
+        private readonly DailyScheduleCoordinator _daily =
+            new(new DailyScheduleJournalStore());
+        private CancellationTokenSource? _workerCancellation;
+        private Task? _worker;
+        private Func<CancellationToken, Task<ScheduledRunOutcome>>? _execution;
+        private bool _enabled;
 
         public event EventHandler? AutoGenerateTriggered;
         public event EventHandler<string>? NextGenerateTimeUpdated;
 
-        private AutoGenerateService() 
-        { 
-            dispatcherQueue = DispatcherQueue.GetForCurrentThread();
-        }
+        private AutoGenerateService() { }
+        public bool IsEnabled => _enabled;
+        public DateTime? NextGenerateTime => Settings.Instance.NextAutoGenerateTime;
+        public void SetExecutionHandler(Func<CancellationToken, Task<ScheduledRunOutcome>> handler)
+            => _execution = handler ?? throw new ArgumentNullException(nameof(handler));
 
         public void RefreshFromSettings()
         {
+            Stop();
             var settings = Settings.Instance;
-            
-            if (settings.AutoGenerateEnabled && settings.AutoGenerateHours > 0)
+            if (!settings.AutoGenerateEnabled) return;
+            if (settings.AutoGenerateMode == "daily")
             {
-                // If there's a saved next generation time, check if it's in the future or past
-                if (settings.NextAutoGenerateTime.HasValue)
+                // Validate before starting background tasks or touching journal files.
+                var activation = settings.DailyAutoGenerateEnabledAtUtc ?? DateTimeOffset.UtcNow;
+                var config = new DailyScheduleConfig(settings.DailyAutoGenerateTime,
+                    settings.DailyAutoGenerateTimeZone, activation);
+                _ = DailyWallClock.NextUtc(config, DateTimeOffset.UtcNow);
+                if (!settings.DailyAutoGenerateEnabledAtUtc.HasValue)
                 {
-                    if (settings.NextAutoGenerateTime > DateTime.Now)
-                    {
-                        StartFromSavedTime();
-                    }
-                    else
-                    {
-                        // Time has passed, trigger immediate generation and start new cycle
-                        TriggerGenerationAndRestart();
-                    }
-                }
-                else
-                {
-                    // Start fresh with current settings
-                    Start(settings.AutoGenerateHours);
+                    settings.DailyAutoGenerateEnabledAtUtc = activation;
+                    settings.Save();
                 }
             }
-            else
+            else if (settings.AutoGenerateHours <= 0 ||
+                     double.IsNaN(settings.AutoGenerateHours) ||
+                     double.IsInfinity(settings.AutoGenerateHours)) return;
+            else if (!settings.NextAutoGenerateTime.HasValue)
             {
-                // Stop if disabled
-                Cancel();
-            }
-        }
-
-        public bool IsEnabled => pollTimer != null;
-        public DateTime? NextGenerateTime => Settings.Instance.NextAutoGenerateTime;
-
-        public void Start(double hours)
-        {
-            Stop();
-
-            if (hours <= 0)
-            {
-                return;
+                settings.NextAutoGenerateTime = DateTime.Now.AddHours(settings.AutoGenerateHours);
+                settings.Save();
             }
 
-            var nextTime = DateTime.Now.AddHours(hours);
-            Settings.Instance.NextAutoGenerateTime = nextTime;
-            Settings.Instance.Save();
-
-            StartPolling();
-        }
-
-        public void StartFromSavedTime()
-        {
-            if (Settings.Instance.NextAutoGenerateTime.HasValue && 
-                Settings.Instance.NextAutoGenerateTime > DateTime.Now)
+            lock (_guard)
             {
-                StartPolling();
+                _enabled = true;
+                _workerCancellation = new CancellationTokenSource();
+                var token = _workerCancellation.Token;
+                _worker = Task.Run(() => PollLoopAsync(token));
             }
-            else
-            {
-                Settings.Instance.NextAutoGenerateTime = null;
-                Settings.Instance.Save();
-                NextGenerateTimeUpdated?.Invoke(this, "");
-            }
-        }
-
-        private void StartPolling()
-        {
-            Stop();
-
-            pollTimer = dispatcherQueue.CreateTimer();
-            pollTimer.Interval = TimeSpan.FromSeconds(1); // Poll every second
-            pollTimer.Tick += OnPollTimer_Tick;
-            pollTimer.Start();
-
             UpdateNextGenerateTime();
         }
 
-        public void Stop()
+        public void Start(double hours)
         {
-            pollTimer?.Stop();
-            pollTimer = null;
-
-            NextGenerateTimeUpdated?.Invoke(this, "");
+            if (hours <= 0 || double.IsNaN(hours) || double.IsInfinity(hours)) return;
+            Settings.Instance.AutoGenerateMode = "interval";
+            Settings.Instance.AutoGenerateHours = hours;
+            Settings.Instance.NextAutoGenerateTime = DateTime.Now.AddHours(hours);
+            Settings.Instance.Save();
+            RefreshFromSettings();
         }
+
+        public void StartFromSavedTime() => RefreshFromSettings();
 
         public void Cancel()
         {
@@ -129,52 +83,99 @@ namespace WallTrek.Services
             Settings.Instance.Save();
         }
 
-        private void OnPollTimer_Tick(object? sender, object e)
+        public void Stop()
         {
-            var nextTime = Settings.Instance.NextAutoGenerateTime;
-            
-            if (!nextTime.HasValue)
+            lock (_guard)
             {
-                Stop();
+                _enabled = false;
+                _workerCancellation?.Cancel();
+                // Existing task may still be completing a started generation; don't
+                // dispose CTS while that callback is using it.
+                _workerCancellation = null;
+            }
+            NextGenerateTimeUpdated?.Invoke(this, "");
+        }
+
+        private async Task PollLoopAsync(CancellationToken token)
+        {
+            try
+            {
+                // First check is immediate, then recurring even if the main window is hidden.
+                while (!token.IsCancellationRequested)
+                {
+                    try
+                    {
+                        // Windows timezone and DST rules may change while the app runs.
+                        TimeZoneInfo.ClearCachedData();
+                        await CheckDueAsync(token);
+                        UpdateNextGenerateTime();
+                    }
+                    catch (OperationCanceledException) when (token.IsCancellationRequested) { break; }
+                    catch (Exception ex)
+                    {
+                        // Do not catch up repeatedly after a corrupt state or unexpected
+                        // failure. Retain prior wallpaper; retry only polling, not images.
+                        System.Diagnostics.Debug.WriteLine("Auto-schedule check failed: " +
+                            ex.GetType().Name);
+                        NextGenerateTimeUpdated?.Invoke(this,
+                            "Schedule unavailable; inspect local settings/journal.");
+                    }
+                    await Task.Delay(TimeSpan.FromSeconds(30), token);
+                }
+            }
+            catch (OperationCanceledException) when (token.IsCancellationRequested) { }
+        }
+
+        private async Task CheckDueAsync(CancellationToken token)
+        {
+            var s = Settings.Instance;
+            if (!s.AutoGenerateEnabled || _execution is null) return;
+            if (s.AutoGenerateMode == "daily")
+            {
+                var config = new DailyScheduleConfig(s.DailyAutoGenerateTime,
+                    s.DailyAutoGenerateTimeZone,
+                    s.DailyAutoGenerateEnabledAtUtc ?? DateTimeOffset.UtcNow);
+                await _daily.CheckAsync(config, _execution, token);
                 return;
             }
 
-            if (DateTime.Now >= nextTime.Value)
-            {
-                TriggerGenerationAndRestart();
-            }
-            else
-            {
-                UpdateNextGenerateTime();
-            }
-        }
-
-        private void TriggerGenerationAndRestart()
-        {
-            Settings.Instance.NextAutoGenerateTime = null;
-            Settings.Instance.Save();
-            Stop();
-            AutoGenerateTriggered?.Invoke(this, EventArgs.Empty);
-            
-            // Restart timer if auto-generate is still enabled
-            if (Settings.Instance.AutoGenerateEnabled && Settings.Instance.AutoGenerateHours > 0)
-            {
-                Start(Settings.Instance.AutoGenerateHours);
-            }
+            var next = s.NextAutoGenerateTime;
+            if (!next.HasValue) return;
+            if (DateTime.Now < next.Value) return;
+            // Consume previous due time before any async network call. After a crash,
+            // an already-dispatched interval slot is not blindly dispatched again.
+            var intervalHours = s.AutoGenerateHours;
+            var now = DateTime.Now;
+            s.NextAutoGenerateTime = now.AddHours(intervalHours);
+            s.Save();
+            await _execution(token);
         }
 
         private void UpdateNextGenerateTime()
         {
-            var nextTime = Settings.Instance.NextAutoGenerateTime;
-            
-            if (!nextTime.HasValue)
+            var settings = Settings.Instance;
+            if (!_enabled || !settings.AutoGenerateEnabled)
             {
                 NextGenerateTimeUpdated?.Invoke(this, "");
                 return;
             }
-
-            string timeText = $"Next generation at: {nextTime.Value:MMM d, h:mm tt}";
-            NextGenerateTimeUpdated?.Invoke(this, timeText);
+            if (settings.AutoGenerateMode == "daily")
+            {
+                var config = new DailyScheduleConfig(settings.DailyAutoGenerateTime,
+                    settings.DailyAutoGenerateTimeZone,
+                    settings.DailyAutoGenerateEnabledAtUtc ?? DateTimeOffset.UtcNow);
+                var zone = DailyWallClock.ResolveZone(config.TimeZoneId);
+                var next = DailyWallClock.NextUtc(config, DateTimeOffset.UtcNow);
+                var wall = TimeZoneInfo.ConvertTime(next, zone);
+                var journal = _daily.Snapshot();
+                NextGenerateTimeUpdated?.Invoke(this,
+                    $"Daily: {wall:ddd MMM d, HH:mm} ({zone.StandardName}) · {journal.LastStatus}");
+            }
+            else
+                NextGenerateTimeUpdated?.Invoke(this,
+                    settings.NextAutoGenerateTime is DateTime when
+                        ? $"Every {settings.AutoGenerateHours:0.##}h · next {when:MMM d, h:mm tt}"
+                        : "Interval schedule unavailable");
         }
     }
 }
