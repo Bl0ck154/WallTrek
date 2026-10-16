@@ -46,7 +46,7 @@ public sealed record PreparedWallpaper(Guid ScenarioId, string FinalPrompt, stri
 
 public static class ScenarioComposer
 {
-    private static readonly Regex Tokens = new(@"{{\s*([a-zA-Z][a-zA-Z0-9_]{0,31})\s*}}",
+    private static readonly Regex Tokens = new(@"\{\{\s*([a-zA-Z][a-zA-Z0-9_]{0,31})\s*\}\}",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
     public const string IdentityClause = "Preserve the recognizable identity, face shape, eyes, nose, mouth, skin tone, and natural proportions of the person in the identity photographs. Keep the same individual, not a lookalike. Do not alter age or identity.";
     public static PreparedWallpaper Compose(WallpaperScenario scene, IReadOnlyList<ReferencePhoto> active)
