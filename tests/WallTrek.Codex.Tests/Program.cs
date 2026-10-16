@@ -35,11 +35,29 @@ try
     runner.BadImage = false;
     runner.Error = CodexImageFailure.RateLimited;
     await ExpectFailure(bridge, CodexImageFailure.RateLimited);
+    runner.Error = CodexImageFailure.Timeout;
+    await ExpectFailure(bridge, CodexImageFailure.Timeout);
+    runner.Error = CodexImageFailure.Cancelled;
+    await ExpectFailure(bridge, CodexImageFailure.Cancelled);
+    runner.Error = null;
+    runner.LoggedIn = false;
+    await ExpectFailure(bridge, CodexImageFailure.NotSignedIn);
+    runner.LoggedIn = true;
+
+    var missingHelper = new CodexImageBridge(true, exe, Path.Combine(root, "missing.exe"), runner);
+    await ExpectFailure(missingHelper, CodexImageFailure.ToolUnavailable);
+    try
+    {
+        await bridge.GenerateAsync(new CodexImageRequest("lake", Enumerable.Range(0, 6)
+            .Select(_ => new CodexReference(reference, CodexReferenceRole.Content)).ToArray()));
+        throw new Exception("reference limit not enforced");
+    }
+    catch (ArgumentException) { }
 
     var disabled = new CodexImageBridge(false, exe, helper, runner);
     try { await disabled.GenerateAsync(new CodexImageRequest("lake")); throw new Exception("disabled backend ran"); }
     catch (CodexImageException e) when (e.Reason == CodexImageFailure.ToolUnavailable) { }
-    Console.WriteLine("PASS: probe, opt-in, generation, edit roles, cleanup, invalid image and typed errors");
+    Console.WriteLine("PASS: probe, opt-in, generation, edit roles, cleanup, limits, auth, invalid image and typed errors");
 }
 finally { Directory.Delete(root, true); }
 
@@ -57,6 +75,7 @@ sealed class FakeRunner : ICodexCommandRunner
     public static readonly byte[] ValidPng = Convert.FromBase64String(
         "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/xU4AAAAASUVORK5CYII=");
     public bool BadImage { get; set; }
+    public bool LoggedIn { get; set; } = true;
     public CodexImageFailure? Error { get; set; }
     public string[]? ImageArgs { get; private set; }
 
@@ -64,7 +83,7 @@ sealed class FakeRunner : ICodexCommandRunner
         string workingDirectory, TimeSpan timeout, bool probeOutput, CancellationToken ct)
     {
         if (args.Contains("--version")) return Task.FromResult(new CodexCommandResult(0, "0.2.0", null));
-        if (args.Contains("status")) return Task.FromResult(new CodexCommandResult(0, "Logged in using ChatGPT", null));
+        if (args.Contains("status")) return Task.FromResult(new CodexCommandResult(LoggedIn ? 0 : 1, LoggedIn ? "Logged in using ChatGPT" : "Not logged in", null));
         ImageArgs = args.ToArray();
         if (Error.HasValue) return Task.FromResult(new CodexCommandResult(1, "", Error));
         var output = args[Array.IndexOf(ImageArgs, "--out") + 1];
