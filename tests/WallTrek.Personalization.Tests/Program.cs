@@ -178,14 +178,44 @@ static async Task History()
     var dir = Temporary();
     try
     {
-        var history = new PersonalizationHistory(Path.Combine(dir, "history.db"));
-        var prepared = ScenarioComposer.Compose(MakeScenario(), Array.Empty<ReferencePhoto>());
+        var database = Path.Combine(dir, "history.db");
         var imagePath = Path.Combine(dir, "wallpaper.jpg");
+        using (var db = new SqliteConnection("Data Source=" + database))
+        {
+            db.Open();
+            using var cmd = db.CreateCommand();
+            cmd.CommandText = "CREATE TABLE GeneratedImages (ImagePath TEXT); INSERT INTO GeneratedImages(ImagePath) VALUES (@path);";
+            cmd.Parameters.AddWithValue("@path", imagePath);
+            cmd.ExecuteNonQuery();
+        }
+        var history = new PersonalizationHistory(database);
+        var prepared = ScenarioComposer.Compose(MakeScenario(), Array.Empty<ReferencePhoto>());
         await history.RecordAsync(imagePath, prepared, "Travel", "provider123", "image-model");
-        var rows = await new PersonalizationHistory(Path.Combine(dir, "history.db")).RecentAsync();
+        var rows = await new PersonalizationHistory(database).RecentAsync();
         Check(rows.Count == 1 && rows[0].Prompt == prepared.FinalPrompt, "resolved prompt history missing");
         Check(rows[0].VariablesJson.Contains("place"), "variable metadata lost");
         Check(rows[0].ProviderId == "provider123", "provider provenance missing");
+        using (var db = new SqliteConnection("Data Source=" + database))
+        {
+            db.Open();
+            using var rename = db.CreateCommand();
+            rename.CommandText = "UPDATE GeneratedImages SET ImagePath=@new WHERE ImagePath=@old";
+            rename.Parameters.AddWithValue("@new", imagePath + ".archived");
+            rename.Parameters.AddWithValue("@old", imagePath);
+            rename.ExecuteNonQuery();
+        }
+        rows = await history.RecentAsync();
+        Check(rows.Count == 1 && rows[0].ImagePath == imagePath + ".archived",
+            "archive did not update provenance path");
+        using (var db = new SqliteConnection("Data Source=" + database))
+        {
+            db.Open();
+            using var delete = db.CreateCommand();
+            delete.CommandText = "DELETE FROM GeneratedImages WHERE ImagePath=@image";
+            delete.Parameters.AddWithValue("@image", imagePath + ".archived");
+            delete.ExecuteNonQuery();
+        }
+        Check((await history.RecentAsync()).Count == 0, "deleted generated image left stale history");
     }
     finally
     {
