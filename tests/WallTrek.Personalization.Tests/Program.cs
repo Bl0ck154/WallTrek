@@ -1,3 +1,4 @@
+using Microsoft.Data.Sqlite;
 using System.Drawing;
 using System.Drawing.Imaging;
 using WallTrek.Services.Personalization;
@@ -186,7 +187,11 @@ static async Task History()
         Check(rows[0].VariablesJson.Contains("place"), "variable metadata lost");
         Check(rows[0].ProviderId == "provider123", "provider provenance missing");
     }
-    finally { Directory.Delete(dir, true); }
+    finally
+    {
+        SqliteConnection.ClearAllPools(); // Windows may retain pooled SQLite file handles.
+        Directory.Delete(dir, true);
+    }
 }
 sealed class FakeProvider : IImageProvider
 {
