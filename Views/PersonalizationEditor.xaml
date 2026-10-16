@@ -24,6 +24,7 @@
                         <CheckBox x:Name="PhotoEnabled" Content="Use this photo"/>
                         <CheckBox x:Name="PhotoPrimary" Content="Primary portrait"/>
                     </StackPanel>
+                    <CheckBox x:Name="ConfirmDeletePhoto" Content="I confirm deletion of the selected photo and its stored original"/>
                     <StackPanel Orientation="Horizontal" Spacing="8">
                         <Button Content="Save photo settings" Click="SavePhoto_Click"/>
                         <Button Content="Delete from library" Click="DeletePhoto_Click"/>
@@ -35,6 +36,7 @@
                     <ComboBox x:Name="ScenarioList" Header="Saved scenarios"
                               DisplayMemberPath="Name" HorizontalAlignment="Left"
                               MinWidth="340" SelectionChanged="ScenarioList_SelectionChanged"/>
+                    <CheckBox x:Name="ConfirmDeleteScenario" Content="I confirm deletion of the selected scenario"/>
                     <StackPanel Orientation="Horizontal" Spacing="8">
                         <Button Content="New scenario" Click="NewScenario_Click"/>
                         <Button Content="Delete scenario" Click="DeleteScenario_Click"/>
@@ -67,6 +69,7 @@
                     <ComboBox x:Name="DestinationProfiles" Header="Allow photo transfer to this specific provider"
                               MinWidth="400" HorizontalAlignment="Left"
                               DisplayMemberPath="Label"/>
+                    <CheckBox x:Name="ConfirmUpload" Content="I consent to uploading sanitized photos to the selected provider (host shown above)"/>
                     <Button Content="Approve these photos for this provider" Click="ApproveDestination_Click"
                             HorizontalAlignment="Left"/>
                     <TextBlock TextWrapping="Wrap" Text="Consent is bound to the provider host and the current photos/roles. Switching hosts or changing photos needs new approval. No automatic vendor fallback."/>
