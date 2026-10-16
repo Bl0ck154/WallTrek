@@ -156,6 +156,10 @@ public sealed class OpenAiCompatibleProvider : IImageProvider
         else throw new ProviderException(ProviderFailure.InvalidResponse);
 
         var (imageMime, width, height) = ProviderImageValidator.Check(image);
+        // Upstream FileService uses System.Drawing.Bitmap, which does not decode WebP.
+        // Never advertise a successful image if the wallpaper pipeline cannot persist it.
+        if (imageMime == "image/webp")
+            throw new ProviderException(ProviderFailure.UnsupportedOperation);
         return new ProviderImageResult(image, imageMime, width, height, ProviderId, model);
     }
 
