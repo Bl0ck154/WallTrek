@@ -42,7 +42,7 @@ public sealed class PersonalizedState
 }
 
 public sealed record PreparedWallpaper(Guid ScenarioId, string FinalPrompt, string CombinationKey,
-    IReadOnlyDictionary<string, string> Variables, IReadOnlyList<Guid> ReferenceIds);
+    IReadOnlyDictionary<string, string> Variables, IReadOnlyList<Guid> ReferenceIds, string ReferenceSignature);
 
 public static class ScenarioComposer
 {
@@ -101,8 +101,10 @@ public static class ScenarioComposer
         if (active.Any(p => p.Role == ReferenceRole.Identity)) sections.Insert(0, IdentityClause);
         if (active.Any(p => p.Role == ReferenceRole.Style))
             sections.Add("Use style references for aesthetics only; do not copy a person from a style-only image.");
+        var referenceSignature = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(
+            string.Join("|", active.Select(p => p.Id.ToString("N") + ":" + p.Role + ":" + p.Primary)))));
         return new PreparedWallpaper(scene.Id, string.Join("\n\n", sections), chosen.Key,
-            chosen.Values, active.Select(p => p.Id).ToArray());
+            chosen.Values, active.Select(p => p.Id).ToArray(), referenceSignature);
     }
 
     public static void CommitSuccess(WallpaperScenario scene, PreparedWallpaper prepared)
